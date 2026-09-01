@@ -11,4 +11,3 @@ jobs:
       protected_base: main
       required_source: develop
       dev_base: develop
-      dev_allowed_patterns: 'feature/* fix/* hotfix/*'
