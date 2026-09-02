@@ -50,7 +50,7 @@ cp .env.example .env
 | `API_MOCK_TIMEOUT_SECONDS` | Delai d'attente applique a chaque requete |
 | `API_MOCK_SOURCE_TIMEZONE` | Fuseau suppose des horodatages naifs renvoyes par l'API |
 | `POLL_INTERVAL_SECONDS` | Periode du collecteur temps reel |
-| `SITES` | Identifiants de sites separes par des virgules |
+| `SITES` | Vide ou `ALL` pour tout le parc, sinon liste separee par des virgules |
 | `KAFKA_BOOTSTRAP_SERVERS` | Broker Kafka du conteneur messager-consumer |
 | `KAFKA_TOPIC_READINGS` | Topic des mesures brutes |
 | `KAFKA_TOPIC_READINGS_IMPUTED` | Topic des mesures imputees |
@@ -61,6 +61,17 @@ cp .env.example .env
 Le service refuse de demarrer si `API_MOCK_BASE_URL` ou `KAFKA_BOOTSTRAP_SERVERS`
 sont absents. Une configuration incomplete echoue immediatement, avec un message
 explicite, plutot qu'au bout de plusieurs minutes de fonctionnement.
+
+### Selection des sites
+
+La liste des sites vit dans l'API, pas dans la configuration. Par defaut, le
+collecteur interroge `/api/v1/sites` au demarrage et collecte tout le parc expose.
+
+`SITES` ne sert donc qu'a restreindre cette collecte, par exemple pour un
+environnement de developpement, pour ecarter temporairement un site, ou pour repartir
+la charge entre plusieurs instances du collecteur. Un identifiant configure mais
+absent du referentiel fait echouer le demarrage, avec la liste des identifiants
+introuvables.
 
 ## Verification
 

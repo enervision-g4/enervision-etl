@@ -13,6 +13,9 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 ACCEPTED_URL_SCHEMES = ("http://", "https://")
 """Schemas acceptes pour l'URL de l'API mock."""
 
+EVERY_SITE_WILDCARD = "ALL"
+"""Valeur de SITES demandant explicitement la collecte de tout le parc."""
+
 
 class EtlSettings(BaseSettings):
     """Parametres du pipeline ETL.
@@ -25,7 +28,8 @@ class EtlSettings(BaseSettings):
         api_mock_timeout_seconds: Delai d'attente applique a chaque requete.
         api_mock_source_timezone: Fuseau suppose des horodatages naifs de l'API.
         poll_interval_seconds: Periode du collecteur temps reel.
-        sites: Identifiants des sites a collecter.
+        sites: Identifiants des sites a collecter. Une liste vide, absente ou
+            reduite au mot ALL demande la collecte de tout le parc expose par l'API.
         kafka_bootstrap_servers: Broker Kafka du conteneur messager-consumer.
         kafka_topic_readings: Topic des mesures brutes.
         kafka_topic_readings_imputed: Topic des mesures imputees.
@@ -46,7 +50,7 @@ class EtlSettings(BaseSettings):
     api_mock_source_timezone: str = "UTC"
 
     poll_interval_seconds: int = Field(default=60, gt=0)
-    sites: Annotated[list[str], NoDecode]
+    sites: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     kafka_bootstrap_servers: str = Field(min_length=1)
     kafka_topic_readings: str = "enervision.readings.raw"
@@ -107,22 +111,29 @@ class EtlSettings(BaseSettings):
 
     @field_validator("sites")
     @classmethod
-    def reject_empty_site_list(cls, site_identifiers: list[str]) -> list[str]:
-        """Refuse une liste de sites vide.
+    def normalize_wildcard(cls, site_identifiers: list[str]) -> list[str]:
+        """Ramene la demande de collecte totale a une liste vide.
+
+        Enumerer les sites dans l'environnement dupliquerait une information que
+        l'API expose deja, et deviendrait ingerable sur un parc de plusieurs centaines
+        de sites. Une liste vide signifie donc tout le parc, le filtrage explicite
+        restant possible pour restreindre un environnement de developpement ou pour
+        repartir la collecte entre plusieurs instances.
 
         Args:
             site_identifiers: Identifiants deja decoupes.
 
         Returns:
-            La liste inchangee si elle contient au moins un site.
-
-        Raises:
-            ValueError: Si la liste est vide.
+            La liste demandee, ou une liste vide pour signifier tout le parc.
         """
-        # Un parc vide demarrerait sans jamais interroger l'API, panne silencieuse a eviter.
-        if not site_identifiers:
-            raise ValueError("SITES must contain at least one site identifier")
+        if len(site_identifiers) == 1 and site_identifiers[0].upper() == EVERY_SITE_WILDCARD:
+            return []
         return site_identifiers
+
+    @property
+    def collects_every_site(self) -> bool:
+        """Indique si la configuration demande la collecte de tout le parc expose."""
+        return not self.sites
 
 
 def load_settings() -> EtlSettings:

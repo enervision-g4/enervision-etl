@@ -20,7 +20,6 @@ CONFIGURABLE_VARIABLES = (
 MINIMAL_ENVIRONMENT = {
     "API_MOCK_BASE_URL": "http://192.0.2.10:8000",
     "KAFKA_BOOTSTRAP_SERVERS": "kafka:9092",
-    "SITES": "SITE001,SITE002",
 }
 
 
@@ -43,6 +42,14 @@ def test_loads_required_settings_from_environment(isolated_environment: pytest.M
 
     assert settings.api_mock_base_url == "http://192.0.2.10:8000"
     assert settings.kafka_bootstrap_servers == "kafka:9092"
+
+
+def test_site_list_is_not_mandatory(isolated_environment: pytest.MonkeyPatch) -> None:
+    # Enumerer les sites dupliquerait une information que l'API expose deja.
+    for variable_name, value in MINIMAL_ENVIRONMENT.items():
+        isolated_environment.setenv(variable_name, value)
+
+    build_settings()
 
 
 def test_defaults_match_the_specification(isolated_environment: pytest.MonkeyPatch) -> None:
@@ -119,13 +126,56 @@ def test_missing_mandatory_variable_is_rejected(
         build_settings()
 
 
-def test_empty_site_list_is_rejected(isolated_environment: pytest.MonkeyPatch) -> None:
+def test_an_absent_site_list_means_the_whole_park(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
+    for variable_name, value in MINIMAL_ENVIRONMENT.items():
+        isolated_environment.setenv(variable_name, value)
+
+    settings = build_settings()
+
+    assert settings.sites == []
+    assert settings.collects_every_site is True
+
+
+@pytest.mark.parametrize("wildcard", ["ALL", "all", " All "])
+def test_the_wildcard_means_the_whole_park(
+    isolated_environment: pytest.MonkeyPatch,
+    wildcard: str,
+) -> None:
+    for variable_name, value in MINIMAL_ENVIRONMENT.items():
+        isolated_environment.setenv(variable_name, value)
+    isolated_environment.setenv("SITES", wildcard)
+
+    settings = build_settings()
+
+    assert settings.sites == []
+    assert settings.collects_every_site is True
+
+
+def test_a_blank_site_list_means_the_whole_park(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
     for variable_name, value in MINIMAL_ENVIRONMENT.items():
         isolated_environment.setenv(variable_name, value)
     isolated_environment.setenv("SITES", " , ")
 
-    with pytest.raises(ValidationError):
-        build_settings()
+    settings = build_settings()
+
+    assert settings.collects_every_site is True
+
+
+def test_an_explicit_list_restricts_the_collection(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
+    for variable_name, value in MINIMAL_ENVIRONMENT.items():
+        isolated_environment.setenv(variable_name, value)
+    isolated_environment.setenv("SITES", "SITE002,SITE005")
+
+    settings = build_settings()
+
+    assert settings.sites == ["SITE002", "SITE005"]
+    assert settings.collects_every_site is False
 
 
 def test_base_url_without_http_scheme_is_rejected(
