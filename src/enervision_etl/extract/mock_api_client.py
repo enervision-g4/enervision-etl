@@ -1,8 +1,6 @@
-"""Client type de l'API mock EnerVision.
+"""Client type de l'API mock : chaque endpoint rend des objets valides, pas du JSON.
 
-Expose chaque endpoint sous forme de methode renvoyant des objets valides plutot
-que du JSON brut. Le comportement de /api/v1/readings encode ici a ete mesure sur
-une instance reelle et contredit l'interpretation initiale du parametre limit :
+Le comportement de /api/v1/readings encode ici a ete mesure sur une instance reelle,
 voir fetch_readings_window.
 """
 
@@ -33,8 +31,7 @@ class MockApiClient:
         """Associe le client a un transport HTTP deja configure.
 
         Args:
-            http_client: Transport portant l'URL de base, le delai d'attente
-                et la politique de rejeu.
+            http_client: Transport portant l'URL de base et la politique de rejeu.
         """
         self._http_client = http_client
 
@@ -42,8 +39,7 @@ class MockApiClient:
         """Indique si l'API mock se declare operationnelle.
 
         Returns:
-            True si /health repond avec le statut healthy. Toute erreur reseau
-            ou HTTP est interpretee comme une indisponibilite, sans propagation.
+            True si /health repond healthy. Toute erreur vaut indisponibilite.
         """
         try:
             health_report = self._http_client.get_json("/health")
@@ -52,10 +48,11 @@ class MockApiClient:
         return bool(health_report.get("status") == "healthy")
 
     def fetch_site_registry(self) -> list[Site]:
-        """Recupere le referentiel complet des sites.
+        """Recupere la liste complete du parc.
 
         Returns:
-            Les sites exposes par l'API, avec leur capacite et leur type.
+            Tous les sites exposes, avec type, puissance installee et statut. Alimente
+            SITE, le taux de charge et le choix de la strategie d'imputation.
 
         Raises:
             MockApiUnavailableError: Si l'API reste injoignable.
@@ -82,10 +79,9 @@ class MockApiClient:
         return Site.model_validate(site_payload)
 
     def fetch_current_reading(self, site_id: str) -> EnergyReading:
-        """Recupere la mesure instantanee d'un site.
+        """Recupere la mesure instantanee d'un site, endpoint du collecteur temps reel.
 
-        Endpoint principal du collecteur temps reel. Une mesure partielle ou
-        integralement nulle est un resultat valide, renvoye tel quel.
+        Une mesure partielle ou integralement nulle est un resultat valide.
 
         Args:
             site_id: Identifiant metier du site.
@@ -109,13 +105,12 @@ class MockApiClient:
         end_time: datetime,
         resolution_seconds: float = DEFAULT_RESOLUTION_SECONDS,
     ) -> list[EnergyReading]:
-        """Recupere l'historique simule d'un site sur une periode, a une resolution donnee.
+        """Recupere l'historique simule d'un site, a la resolution demandee.
 
-        Le parametre limit de l'API n'est pas une taille de page : il fixe le nombre de
-        points repartis uniformement dans la fenetre, l'intervalle valant
-        (end_time - start_time) / limit. L'API regenerant par ailleurs la serie a chaque
-        appel, une pagination par curseur est impossible. La periode est donc decoupee en
-        tranches jointives de duree fixe, chacune echantillonnee a la resolution voulue.
+        Le parametre limit n'est pas une taille de page mais un nombre de points
+        repartis dans la fenetre, et l'API regenere la serie a chaque appel : la
+        pagination par curseur est donc impossible. La periode est decoupee en tranches
+        jointives, chacune echantillonnee a la resolution voulue.
 
         Args:
             site_id: Identifiant du site, ou None pour interroger tout le parc.
@@ -182,7 +177,7 @@ class MockApiClient:
             resolution_seconds: Ecart souhaite entre deux mesures.
 
         Returns:
-            Le nombre de points, borne entre un et le plafond documente de l'API.
+            Le nombre de points, borne entre un et le plafond de l'API.
         """
         chunk_seconds = (chunk_end_time - chunk_start_time).total_seconds()
         requested_points = ceil(chunk_seconds / resolution_seconds)

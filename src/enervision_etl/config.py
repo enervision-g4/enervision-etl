@@ -1,8 +1,7 @@
-"""Configuration du pipeline, lue dans l'environnement et validee au demarrage.
+"""Configuration lue dans l'environnement et validee au demarrage.
 
-Aucune adresse n'est codee en dur. Une configuration incomplete fait echouer le
-demarrage immediatement, avec un message explicite, plutot qu'au bout de
-plusieurs minutes de fonctionnement sur une valeur absente.
+Aucune adresse en dur, et une configuration incomplete fait echouer le demarrage
+immediatement plutot qu'apres plusieurs minutes de fonctionnement.
 """
 
 from typing import Annotated
@@ -28,9 +27,13 @@ class EtlSettings(BaseSettings):
         api_mock_timeout_seconds: Delai d'attente applique a chaque requete.
         api_mock_source_timezone: Fuseau suppose des horodatages naifs de l'API.
         poll_interval_seconds: Periode du collecteur temps reel.
+        site_refresh_interval_seconds: Delai entre deux verifications de la liste
+            des sites. Une republication n'a lieu que si un site a change.
         sites: Identifiants des sites a collecter. Une liste vide, absente ou
             reduite au mot ALL demande la collecte de tout le parc expose par l'API.
         kafka_bootstrap_servers: Broker Kafka du conteneur messager-consumer.
+        kafka_topic_site: Topic de la liste des sites, alimentant la table SITE.
+            A creer avec une politique de compaction.
         kafka_topic_measure_raw: Topic alimentant la table MEASURE_RAW.
         kafka_topic_measure_imputed: Topic alimentant la table MEASURE_IMPUTED.
         kafka_topic_alert: Topic alimentant la table ALERT.
@@ -50,11 +53,13 @@ class EtlSettings(BaseSettings):
     api_mock_source_timezone: str = "UTC"
 
     poll_interval_seconds: int = Field(default=60, gt=0)
+    site_refresh_interval_seconds: float = Field(default=3600.0, gt=0)
     sites: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     kafka_bootstrap_servers: str = Field(min_length=1)
     # Un topic par table du MCD, ce qui rend la destination de chaque message lisible
     # sans documentation et aligne les deux depots sur un vocabulaire unique.
+    kafka_topic_site: str = "enervision.site"
     kafka_topic_measure_raw: str = "enervision.measure_raw"
     kafka_topic_measure_imputed: str = "enervision.measure_imputed"
     kafka_topic_alert: str = "enervision.alert"
@@ -71,7 +76,7 @@ class EtlSettings(BaseSettings):
             configured_url: Valeur brute lue dans l'environnement.
 
         Returns:
-            L'URL sans barre oblique finale, evitant les doubles barres a la concatenation.
+            L'URL sans barre oblique finale.
 
         Raises:
             ValueError: Si l'URL ne commence pas par http:// ou https://.
@@ -87,14 +92,13 @@ class EtlSettings(BaseSettings):
     @field_validator("sites", mode="before")
     @classmethod
     def split_site_identifiers(cls, configured_sites: object) -> list[str]:
-        """Decoupe la liste des sites fournie sous forme de chaine separee par des virgules.
+        """Decoupe la liste des sites separee par des virgules.
 
         Args:
-            configured_sites: Valeur brute, chaine separee par des virgules ou
-                liste deja construite.
+            configured_sites: Chaine separee par des virgules, ou liste construite.
 
         Returns:
-            Les identifiants de site, debarrasses des espaces et des entrees vides.
+            Les identifiants, sans espaces ni entrees vides.
 
         Raises:
             TypeError: Si la valeur n'est ni une chaine ni une liste.
@@ -116,11 +120,8 @@ class EtlSettings(BaseSettings):
     def normalize_wildcard(cls, site_identifiers: list[str]) -> list[str]:
         """Ramene la demande de collecte totale a une liste vide.
 
-        Enumerer les sites dans l'environnement dupliquerait une information que
-        l'API expose deja, et deviendrait ingerable sur un parc de plusieurs centaines
-        de sites. Une liste vide signifie donc tout le parc, le filtrage explicite
-        restant possible pour restreindre un environnement de developpement ou pour
-        repartir la collecte entre plusieurs instances.
+        Enumerer les sites dupliquerait ce que l'API expose deja. Une liste vide
+        signifie tout le parc, le filtrage explicite restant possible.
 
         Args:
             site_identifiers: Identifiants deja decoupes.

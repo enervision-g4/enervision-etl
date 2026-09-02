@@ -1,22 +1,21 @@
-"""Contrat du referentiel des sites, alimente par GET /api/v1/sites."""
+"""Referentiel des sites : la liste du parc et les caracteristiques fixes de chacun.
+
+Contenu de GET /api/v1/sites. A la difference des mesures, il decrit ce qui existe et
+non ce qui se passe : quelques lignes, stables, dont seule la version courante importe.
+
+Il fournit capacity_kw pour le taux de charge, site_type pour la strategie d'imputation,
+et alimente la table SITE vers laquelle pointe la cle etrangere de chaque mesure.
+"""
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class Site(BaseModel):
-    """Caracteristiques statiques d'un site industriel ou tertiaire.
-
-    Ce referentiel est charge une fois au demarrage du collecteur et conserve en
-    memoire. Il fournit la capacite necessaire au calcul du taux de charge et le
-    type de site qui determine la strategie d'imputation.
+    """Caracteristiques statiques d'un site.
 
     Attributes:
-        site_id: Identifiant metier du site, par exemple SITE002.
-        site_type: Categorie du site : office, factory, datacenter, retail, hospital.
-        site_name: Libelle lisible du site.
-        location: Ville et pays.
+        site_type: office, factory, datacenter, retail ou hospital.
         capacity_kw: Puissance maximale installee, strictement positive.
-        status: Etat administratif du site, par exemple active.
     """
 
     model_config = ConfigDict(extra="allow", frozen=True)

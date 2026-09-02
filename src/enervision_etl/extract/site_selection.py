@@ -1,8 +1,6 @@
-"""Determination des sites reellement collectes.
+"""Determination des sites collectes, en croisant la liste du parc et la configuration.
 
-La liste des sites vit dans l'API, pas dans la configuration. Enumerer chaque site
-dans une variable d'environnement dupliquerait cette information et deviendrait
-ingerable au dela de quelques dizaines de sites. La configuration ne sert donc qu'a
+La liste vit dans l'API, pas dans l'environnement : la configuration ne sert qu'a
 restreindre la collecte, jamais a la definir.
 """
 
@@ -35,22 +33,18 @@ def resolve_site_identifiers(
     configured_sites: list[str],
     site_registry: list[Site],
 ) -> list[str]:
-    """Croise la configuration et le referentiel pour obtenir les sites a collecter.
+    """Croise la configuration et la liste du parc pour obtenir les sites a collecter.
 
     Args:
-        configured_sites: Restriction demandee en configuration. Une liste vide
-            demande la collecte de tout le parc.
-        site_registry: Referentiel renvoye par l'API mock.
+        configured_sites: Restriction demandee, vide pour tout le parc.
+        site_registry: Liste des sites renvoyee par l'API mock.
 
     Returns:
-        Les identifiants a collecter, dans l'ordre du referentiel afin que la
-        collecte ne depende pas de l'ordre de saisie en configuration.
+        Les identifiants a collecter, dans l'ordre du parc et non de la configuration.
 
     Raises:
-        ValueError: Si le referentiel est vide, ce qui ferait tourner le service
-            sans jamais rien collecter.
-        UnknownConfiguredSiteError: Si la configuration reference un site absent
-            du referentiel.
+        ValueError: Si le parc est vide, le service tournerait sans rien collecter.
+        UnknownConfiguredSiteError: Si un site configure est absent du parc.
     """
     exposed_site_ids = [site.site_id for site in site_registry]
     if not exposed_site_ids:
