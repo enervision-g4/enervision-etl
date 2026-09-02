@@ -1,0 +1,13 @@
+name: Branch flow check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  call-check:
+    uses: enervision-g4/enervision-devops/.github/workflows/enforce-branch-flow.yml@main
+    with:
+      protected_base: main
+      required_source: develop
+      dev_base: develop
