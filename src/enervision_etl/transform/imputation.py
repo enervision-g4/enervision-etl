@@ -15,6 +15,8 @@ mesures, une valeur reconstruite n'est plus une estimation mais une invention.
 Toutes les fonctions sont pures : meme entree, meme sortie, aucun effet de bord.
 """
 
+from collections.abc import Callable
+from datetime import datetime
 from itertools import pairwise
 from typing import Optional
 
@@ -50,6 +52,34 @@ def forward_fill_series(
     return _impute_series(readings, max_gap_measures, ImputationMethod.FORWARD_FILL)
 
 
+def linear_interpolation_series(
+    readings: list[EnergyReading],
+    max_gap_measures: int,
+) -> list[ImputedReading]:
+    """Comble les trous en tracant une droite entre les deux mesures qui les encadrent.
+
+    La position sur cette droite est ponderee par le temps reellement ecoule, et non
+    par le rang de la mesure. Un collecteur temps reel ne tient jamais exactement sa
+    periode, et supposer des intervalles egaux introduirait un biais.
+
+    Contrairement au forward fill, cette strategie a besoin d'un point d'ancrage des
+    deux cotes. Un trou situe en debut ou en fin de serie reste donc tel quel.
+
+    Args:
+        readings: Releves d'un meme site, tries par horodatage croissant.
+        max_gap_measures: Longueur maximale, en nombre de mesures consecutives,
+            d'un trou encore considere comme comblable.
+
+    Returns:
+        Une serie reconstruite de meme longueur, aux memes horodatages.
+
+    Raises:
+        ValueError: Si max_gap_measures n'est pas strictement positif, si la serie
+            melange plusieurs sites, ou si elle n'est pas triee chronologiquement.
+    """
+    return _impute_series(readings, max_gap_measures, ImputationMethod.LINEAR_INTERPOLATION)
+
+
 def _impute_series(
     readings: list[EnergyReading],
     max_gap_measures: int,
@@ -72,6 +102,8 @@ def _impute_series(
     if not readings:
         return []
 
+    fill_gap = _GAP_FILLERS[method]
+    timestamps = [reading.timestamp for reading in readings]
     reconstructed_values: dict[str, list[Optional[float]]] = {}
     imputed_field_names: list[list[str]] = [[] for _ in readings]
 
@@ -82,15 +114,11 @@ def _impute_series(
         for gap_start, gap_end in _gap_ranges(measured_values):
             if gap_end - gap_start > max_gap_measures:
                 continue
-            if method is ImputationMethod.FORWARD_FILL:
-                if gap_start == 0:
-                    continue
-                anchor_value = filled_values[gap_start - 1]
-                if anchor_value is None:
-                    continue
-                for position in range(gap_start, gap_end):
-                    filled_values[position] = anchor_value
-                    imputed_field_names[position].append(field_name)
+            for position, value in fill_gap(
+                measured_values, timestamps, gap_start, gap_end
+            ).items():
+                filled_values[position] = value
+                imputed_field_names[position].append(field_name)
 
         reconstructed_values[field_name] = filled_values
 
@@ -107,6 +135,83 @@ def _impute_series(
         )
         for position, reading in enumerate(readings)
     ]
+
+
+def _fill_gap_by_forward_fill(
+    measured_values: list[Optional[float]],
+    timestamps: list[datetime],
+    gap_start: int,
+    gap_end: int,
+) -> dict[int, float]:
+    """Recopie la derniere valeur connue sur toute la longueur du trou.
+
+    Args:
+        measured_values: Valeurs mesurees du champ, dans l'ordre chronologique.
+        timestamps: Horodatages correspondants, inutilises par cette strategie.
+        gap_start: Position de la premiere valeur absente.
+        gap_end: Position suivant la derniere valeur absente.
+
+    Returns:
+        Les valeurs a ecrire, indexees par position. Un dictionnaire vide signale
+        un trou non comblable, faute de valeur anterieure.
+    """
+    if gap_start == 0:
+        return {}
+
+    anchor_value = measured_values[gap_start - 1]
+    if anchor_value is None:
+        return {}
+
+    return dict.fromkeys(range(gap_start, gap_end), anchor_value)
+
+
+def _fill_gap_by_linear_interpolation(
+    measured_values: list[Optional[float]],
+    timestamps: list[datetime],
+    gap_start: int,
+    gap_end: int,
+) -> dict[int, float]:
+    """Repartit les valeurs sur la droite reliant les deux mesures encadrant le trou.
+
+    Args:
+        measured_values: Valeurs mesurees du champ, dans l'ordre chronologique.
+        timestamps: Horodatages correspondants, servant a la ponderation.
+        gap_start: Position de la premiere valeur absente.
+        gap_end: Position suivant la derniere valeur absente.
+
+    Returns:
+        Les valeurs a ecrire, indexees par position. Un dictionnaire vide signale
+        un trou non comblable, faute d'ancrage des deux cotes ou faute de duree
+        mesurable entre eux.
+    """
+    if gap_start == 0 or gap_end >= len(measured_values):
+        return {}
+
+    value_before = measured_values[gap_start - 1]
+    value_after = measured_values[gap_end]
+    if value_before is None or value_after is None:
+        return {}
+
+    time_before = timestamps[gap_start - 1]
+    elapsed_span = (timestamps[gap_end] - time_before).total_seconds()
+    if elapsed_span <= 0:
+        return {}
+
+    return {
+        position: value_before
+        + (value_after - value_before)
+        * ((timestamps[position] - time_before).total_seconds() / elapsed_span)
+        for position in range(gap_start, gap_end)
+    }
+
+
+GapFiller = Callable[[list[Optional[float]], list[datetime], int, int], dict[int, float]]
+"""Signature commune des strategies de comblement d'un trou."""
+
+_GAP_FILLERS: dict[ImputationMethod, GapFiller] = {
+    ImputationMethod.FORWARD_FILL: _fill_gap_by_forward_fill,
+    ImputationMethod.LINEAR_INTERPOLATION: _fill_gap_by_linear_interpolation,
+}
 
 
 def _gap_ranges(measured_values: list[Optional[float]]) -> list[tuple[int, int]]:
