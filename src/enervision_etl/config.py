@@ -31,6 +31,7 @@ class EtlSettings(BaseSettings):
         sites: Identifiants des sites a collecter. Une liste vide, absente ou
             reduite au mot ALL demande la collecte de tout le parc expose par l'API.
         kafka_bootstrap_servers: Broker Kafka du conteneur messager-consumer.
+        kafka_topic_site: Topic alimentant la table SITE, a politique de compaction.
         kafka_topic_measure_raw: Topic alimentant la table MEASURE_RAW.
         kafka_topic_measure_imputed: Topic alimentant la table MEASURE_IMPUTED.
         kafka_topic_alert: Topic alimentant la table ALERT.
@@ -55,6 +56,7 @@ class EtlSettings(BaseSettings):
     kafka_bootstrap_servers: str = Field(min_length=1)
     # Un topic par table du MCD, ce qui rend la destination de chaque message lisible
     # sans documentation et aligne les deux depots sur un vocabulaire unique.
+    kafka_topic_site: str = "enervision.site"
     kafka_topic_measure_raw: str = "enervision.measure_raw"
     kafka_topic_measure_imputed: str = "enervision.measure_imputed"
     kafka_topic_alert: str = "enervision.alert"

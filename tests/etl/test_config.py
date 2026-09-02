@@ -10,6 +10,7 @@ CONFIGURABLE_VARIABLES = (
     "POLL_INTERVAL_SECONDS",
     "SITES",
     "KAFKA_BOOTSTRAP_SERVERS",
+    "KAFKA_TOPIC_SITE",
     "KAFKA_TOPIC_MEASURE_RAW",
     "KAFKA_TOPIC_MEASURE_IMPUTED",
     "KAFKA_TOPIC_ALERT",
@@ -63,6 +64,7 @@ def test_defaults_match_the_project_conventions(
     assert settings.api_mock_timeout_seconds == 5.0
     assert settings.poll_interval_seconds == 60
     assert settings.api_mock_source_timezone == "UTC"
+    assert settings.kafka_topic_site == "enervision.site"
     assert settings.kafka_topic_measure_raw == "enervision.measure_raw"
     assert settings.kafka_topic_measure_imputed == "enervision.measure_imputed"
     assert settings.kafka_topic_alert == "enervision.alert"
@@ -200,6 +202,7 @@ def test_every_topic_is_named_after_a_table_of_the_data_model(
     settings = build_settings()
 
     for topic in (
+        settings.kafka_topic_site,
         settings.kafka_topic_measure_raw,
         settings.kafka_topic_measure_imputed,
         settings.kafka_topic_alert,

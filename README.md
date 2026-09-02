@@ -60,6 +60,7 @@ cp .env.example .env
 | `POLL_INTERVAL_SECONDS` | Periode du collecteur temps reel |
 | `SITES` | Vide ou `ALL` pour tout le parc, sinon liste separee par des virgules |
 | `KAFKA_BOOTSTRAP_SERVERS` | Broker Kafka du conteneur messager-consumer |
+| `KAFKA_TOPIC_SITE` | Topic alimentant la table `SITE`, a politique de compaction |
 | `KAFKA_TOPIC_MEASURE_RAW` | Topic alimentant la table `MEASURE_RAW` |
 | `KAFKA_TOPIC_MEASURE_IMPUTED` | Topic alimentant la table `MEASURE_IMPUTED` |
 | `KAFKA_TOPIC_ALERT` | Topic alimentant la table `ALERT` |
