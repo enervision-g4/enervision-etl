@@ -18,7 +18,10 @@ from enervision_etl.config import load_settings
 from enervision_etl.contracts.energy_reading import EnergyReading
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import MockApiClient
-from enervision_etl.transform.imputation import forward_fill_series
+from enervision_etl.transform.imputation import (
+    forward_fill_series,
+    linear_interpolation_series,
+)
 from enervision_etl.transform.normalization import normalize_reading
 
 MAX_GAP_MEASURES = 3
@@ -127,29 +130,66 @@ trouee = [
 print(f"\n  {len(verite)} valeurs masquees aux positions {positions} :")
 print("  un trou de 1 mesure, un trou de 2, un trou de 3 consecutives.")
 
-reconstruite = forward_fill_series(trouee, MAX_GAP_MEASURES)
+par_recopie = forward_fill_series(trouee, MAX_GAP_MEASURES)
+par_interpolation = linear_interpolation_series(trouee, MAX_GAP_MEASURES)
 
-print(f"\n  {'heure':<7}{'ANCRE':>10}{'VRAIE':>10}{'RECONSTRUITE':>14}{'ecart %':>10}  methode")
-print("  " + "-" * 78)
-erreurs = []
+print(f"\n  {'heure':<7}{'ANCRE':>9}{'VRAIE':>9}"
+      f"{'ffill':>10}{'err %':>8}{'interp':>11}{'err %':>8}")
+print("  " + "-" * 74)
+
+erreurs_recopie: list[float] = []
+erreurs_interpolation: list[float] = []
+
 for position in positions:
     attendue = verite[position]
-    obtenue = reconstruite[position].consumption_kw
+    if attendue is None:
+        continue
     ancre = next(
         (continue_[p].consumption_kw for p in range(position - 1, -1, -1) if p not in verite),
         None,
     )
-    if obtenue is None or attendue is None:
-        print(f"  {continue_[position].timestamp:%H:%M}  {affiche(ancre)}{affiche(attendue)}"
-              f"{'non comblee':>14}{'-':>10}  {reconstruite[position].imputation_method}")
-        continue
-    erreur = 100 * abs(obtenue - attendue) / attendue
-    erreurs.append(erreur)
-    print(f"  {continue_[position].timestamp:%H:%M}  {affiche(ancre)}{affiche(attendue)}"
-          f"{affiche(obtenue, 14)}{erreur:>9.2f}%  {reconstruite[position].imputation_method}")
+    obtenue_recopie = par_recopie[position].consumption_kw
+    obtenue_interpolation = par_interpolation[position].consumption_kw
 
-if erreurs:
-    print(f"\n  Erreur moyenne  : {sum(erreurs) / len(erreurs):.2f} %")
-    print(f"  Erreur maximale : {max(erreurs):.2f} %")
-    print(f"  Reference, variation naturelle du signal : {variation_moyenne:.1f} % en moyenne")
-print("\n  Ces chiffres serviront de point de comparaison face a l'interpolation lineaire.")
+    if obtenue_recopie is not None:
+        erreur_recopie = 100 * abs(obtenue_recopie - attendue) / attendue
+        erreurs_recopie.append(erreur_recopie)
+        colonne_recopie = f"{obtenue_recopie:>10.2f}{erreur_recopie:>7.2f}%"
+    else:
+        colonne_recopie = f"{'-':>10}{'-':>8}"
+
+    if obtenue_interpolation is not None:
+        erreur_interpolation = 100 * abs(obtenue_interpolation - attendue) / attendue
+        erreurs_interpolation.append(erreur_interpolation)
+        colonne_interpolation = f"{obtenue_interpolation:>11.2f}{erreur_interpolation:>7.2f}%"
+    else:
+        colonne_interpolation = f"{'non comblee':>11}{'-':>8}"
+
+    print(f"  {continue_[position].timestamp:%H:%M}{affiche(ancre)}{affiche(attendue)}"
+          f"{colonne_recopie}{colonne_interpolation}")
+
+titre("VERDICT : quelle strategie pour ce site ?")
+for nom, erreurs in (
+    ("forward_fill        ", erreurs_recopie),
+    ("linear_interpolation", erreurs_interpolation),
+):
+    if not erreurs:
+        print(f"  {nom} aucun trou comble")
+        continue
+    print(f"  {nom} erreur moyenne {sum(erreurs) / len(erreurs):>6.2f} %"
+          f"   maximale {max(erreurs):>6.2f} %"
+          f"   ({len(erreurs)}/{len(positions)} combles)")
+print(f"  variation du signal  {variation_moyenne:>20.2f} %   (plancher incompressible)")
+
+if erreurs_recopie and erreurs_interpolation:
+    moyenne_recopie = sum(erreurs_recopie) / len(erreurs_recopie)
+    moyenne_interpolation = sum(erreurs_interpolation) / len(erreurs_interpolation)
+    meilleure = (
+        "linear_interpolation"
+        if moyenne_interpolation < moyenne_recopie
+        else "forward_fill"
+    )
+    print(f"\n  Meilleure sur ce site : {meilleure}")
+    print("  Noter que l'interpolation comble moins de trous : elle exige un point")
+    print("  d'ancrage des deux cotes, donc elle renonce en fin de serie la ou le")
+    print("  forward fill se contente du passe. Ce compromis est le sujet du commit 8.")
