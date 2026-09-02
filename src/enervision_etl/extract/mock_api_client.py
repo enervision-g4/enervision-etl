@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from math import ceil
 from typing import Any, Final, Optional
 
 from ..contracts.energy_reading import EnergyReading
@@ -9,8 +10,11 @@ from .http_client import ResilientHttpClient
 # Plafond impose par la documentation de l'endpoint /api/v1/readings.
 MAX_READINGS_PER_REQUEST: Final[int] = 1000
 
-# Garde fou contre une API qui renverrait indefiniment la meme fenetre.
-MAX_PAGES_PER_WINDOW: Final[int] = 500
+# Resolution par defaut, alignee sur la periode de polling du collecteur temps reel.
+DEFAULT_RESOLUTION_SECONDS: Final[float] = 60.0
+
+# Garde fou : borne le nombre de tranches pour une periode demesuree.
+MAX_CHUNKS_PER_WINDOW: Final[int] = 500
 
 
 class MockApiClient:
@@ -47,62 +51,70 @@ class MockApiClient:
         site_id: Optional[str],
         start_time: datetime,
         end_time: datetime,
-        page_size: int = MAX_READINGS_PER_REQUEST,
+        resolution_seconds: float = DEFAULT_RESOLUTION_SECONDS,
     ) -> list[EnergyReading]:
-        # Ces deux controles evitent d'emettre une requete dont on sait deja qu'elle
-        # provoquerait un 422. Une erreur de programmation doit echouer sans charger l'API.
-        if not 1 <= page_size <= MAX_READINGS_PER_REQUEST:
+        # Le parametre limit de /api/v1/readings n'est pas une taille de page : il fixe le
+        # nombre de points repartis uniformement dans la fenetre demandee, l'intervalle
+        # valant (end_time - start_time) / limit. Une pagination par curseur est donc
+        # impossible, d'autant que l'API regenere la serie a chaque appel. On decoupe donc
+        # la periode en tranches de duree fixe, chacune echantillonnee a la resolution voulue.
+        if resolution_seconds <= 0:
             raise ValueError(
-                f"page_size must be between 1 and {MAX_READINGS_PER_REQUEST}, received {page_size}"
+                f"resolution_seconds must be strictly positive, received {resolution_seconds}"
             )
         if start_time > end_time:
             raise ValueError(
                 f"start_time {start_time.isoformat()} is after end_time {end_time.isoformat()}"
             )
 
+        chunk_duration = timedelta(seconds=resolution_seconds * MAX_READINGS_PER_REQUEST)
         collected_readings: list[EnergyReading] = []
         already_collected_timestamps: set[datetime] = set()
-        page_start_time = start_time
+        chunk_start_time = start_time
 
-        for _ in range(MAX_PAGES_PER_WINDOW):
-            page = self._fetch_readings_page(site_id, page_start_time, end_time, page_size)
-            if not page:
+        for _ in range(MAX_CHUNKS_PER_WINDOW):
+            if chunk_start_time >= end_time:
                 break
-
-            unseen_readings = [
-                reading
-                for reading in page
-                if reading.timestamp not in already_collected_timestamps
-            ]
-            if not unseen_readings:
-                break
-
-            collected_readings.extend(unseen_readings)
-            already_collected_timestamps.update(reading.timestamp for reading in unseen_readings)
-
-            if len(page) < page_size:
-                break
-
-            page_start_time = max(reading.timestamp for reading in page) + timedelta(
-                microseconds=1
+            chunk_end_time = min(chunk_start_time + chunk_duration, end_time)
+            requested_points = self._points_for_chunk(
+                chunk_start_time, chunk_end_time, resolution_seconds
             )
-            if page_start_time > end_time:
-                break
+
+            chunk = self._fetch_readings_chunk(
+                site_id, chunk_start_time, chunk_end_time, requested_points
+            )
+            for reading in chunk:
+                if reading.timestamp in already_collected_timestamps:
+                    continue
+                already_collected_timestamps.add(reading.timestamp)
+                collected_readings.append(reading)
+
+            chunk_start_time = chunk_end_time
 
         collected_readings.sort(key=lambda reading: reading.timestamp)
         return collected_readings
 
-    def _fetch_readings_page(
+    @staticmethod
+    def _points_for_chunk(
+        chunk_start_time: datetime,
+        chunk_end_time: datetime,
+        resolution_seconds: float,
+    ) -> int:
+        chunk_seconds = (chunk_end_time - chunk_start_time).total_seconds()
+        requested_points = ceil(chunk_seconds / resolution_seconds)
+        return max(1, min(requested_points, MAX_READINGS_PER_REQUEST))
+
+    def _fetch_readings_chunk(
         self,
         site_id: Optional[str],
-        page_start_time: datetime,
-        end_time: datetime,
-        page_size: int,
+        chunk_start_time: datetime,
+        chunk_end_time: datetime,
+        requested_points: int,
     ) -> list[EnergyReading]:
         query_parameters: dict[str, Any] = {
-            "start_time": page_start_time.isoformat(),
-            "end_time": end_time.isoformat(),
-            "limit": page_size,
+            "start_time": chunk_start_time.isoformat(),
+            "end_time": chunk_end_time.isoformat(),
+            "limit": requested_points,
         }
         if site_id is not None:
             query_parameters["site_id"] = site_id
