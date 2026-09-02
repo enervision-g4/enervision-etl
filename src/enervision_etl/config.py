@@ -4,6 +4,7 @@ Aucune adresse en dur, et une configuration incomplete fait echouer le demarrage
 immediatement plutot qu'apres plusieurs minutes de fonctionnement.
 """
 
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import Field, field_validator
@@ -11,6 +12,13 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ACCEPTED_URL_SCHEMES = ("http://", "https://")
 """Schemas acceptes pour l'URL de l'API mock."""
+
+class PublisherTarget(StrEnum):
+    """Destination des messages produits par le collecteur."""
+
+    STDOUT = "stdout"
+    KAFKA = "kafka"
+
 
 EVERY_SITE_WILDCARD = "ALL"
 """Valeur de SITES demandant explicitement la collecte de tout le parc."""
@@ -37,6 +45,9 @@ class EtlSettings(BaseSettings):
         kafka_topic_measure_raw: Topic alimentant la table MEASURE_RAW.
         kafka_topic_measure_imputed: Topic alimentant la table MEASURE_IMPUTED.
         kafka_topic_alert: Topic alimentant la table ALERT.
+        publisher_target: Destination des messages, stdout ou kafka.
+        log_level: Seuil de journalisation.
+        log_as_json: Vrai pour des logs JSON, faux pour un rendu console.
         metrics_port: Port d'exposition des metriques Prometheus.
         imputation_max_gap_measures: Longueur maximale d'un trou encore imputable.
     """
@@ -63,6 +74,11 @@ class EtlSettings(BaseSettings):
     kafka_topic_measure_raw: str = "enervision.measure_raw"
     kafka_topic_measure_imputed: str = "enervision.measure_imputed"
     kafka_topic_alert: str = "enervision.alert"
+
+    # stdout par defaut : rien ne doit tenter d'atteindre un broker par accident.
+    publisher_target: PublisherTarget = PublisherTarget.STDOUT
+    log_level: str = "INFO"
+    log_as_json: bool = True
 
     metrics_port: int = Field(default=8001, gt=0, le=65535)
     imputation_max_gap_measures: int = Field(default=3, gt=0)

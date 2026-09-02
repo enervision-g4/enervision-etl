@@ -15,6 +15,9 @@ CONFIGURABLE_VARIABLES = (
     "KAFKA_TOPIC_MEASURE_RAW",
     "KAFKA_TOPIC_MEASURE_IMPUTED",
     "KAFKA_TOPIC_ALERT",
+    "PUBLISHER_TARGET",
+    "LOG_LEVEL",
+    "LOG_AS_JSON",
     "METRICS_PORT",
     "IMPUTATION_MAX_GAP_MEASURES",
 )
@@ -70,6 +73,8 @@ def test_defaults_match_the_project_conventions(
     assert settings.kafka_topic_measure_raw == "enervision.measure_raw"
     assert settings.kafka_topic_measure_imputed == "enervision.measure_imputed"
     assert settings.kafka_topic_alert == "enervision.alert"
+    assert settings.publisher_target == "stdout"
+    assert settings.log_level == "INFO"
     assert settings.metrics_port == 8001
     assert settings.imputation_max_gap_measures == 3
 
