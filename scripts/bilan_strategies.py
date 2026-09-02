@@ -16,8 +16,8 @@ from itertools import pairwise
 from statistics import mean
 from typing import Optional
 
+from enervision_contracts.energy_reading import EnergyReading
 from enervision_etl.config import load_settings
-from enervision_etl.contracts.energy_reading import EnergyReading
 from enervision_etl.extract.errors import MockApiError
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import MockApiClient

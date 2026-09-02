@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from enervision_etl.contracts.site import Site
+from enervision_contracts.site import Site
 from enervision_etl.extract.site_selection import (
     UnknownConfiguredSiteError,
     resolve_site_identifiers,

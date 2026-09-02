@@ -9,12 +9,12 @@ from itertools import pairwise
 
 from pydantic import ValidationError
 
-from enervision_etl.config import load_settings
-from enervision_etl.contracts.energy_reading import (
+from enervision_contracts.energy_reading import (
     KNOWN_DATA_QUALITY_LEVELS,
     MEASUREMENT_FIELD_NAMES,
     EnergyReading,
 )
+from enervision_etl.config import load_settings
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import MockApiClient
 from enervision_etl.extract.site_selection import (

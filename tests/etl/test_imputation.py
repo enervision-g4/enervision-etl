@@ -3,7 +3,7 @@ from typing import Optional
 
 import pytest
 
-from enervision_etl.contracts.energy_reading import MEASUREMENT_FIELD_NAMES, EnergyReading
+from enervision_contracts.energy_reading import MEASUREMENT_FIELD_NAMES, EnergyReading
 from enervision_etl.transform.imputation import (
     DEFAULT_IMPUTATION_METHOD,
     ImputationMethod,

@@ -6,7 +6,8 @@ ingerable au dela de quelques dizaines de sites. La configuration ne sert donc q
 restreindre la collecte, jamais a la definir.
 """
 
-from ..contracts.site import Site
+from enervision_contracts.site import Site
+
 from .errors import MockApiError
 
 
