@@ -13,6 +13,10 @@ from enervision_etl.contracts.energy_reading import (
 )
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import MockApiClient
+from enervision_etl.extract.site_selection import (
+    UnknownConfiguredSiteError,
+    resolve_site_identifiers,
+)
 
 DOCUMENTED_FIELDS = frozenset(
     {
@@ -34,7 +38,7 @@ def titre(texte: str) -> None:
 
 settings = load_settings()
 print(f"Cible : {settings.api_mock_base_url}")
-print(f"Sites configures : {', '.join(settings.sites)}")
+print(f"Sites configures : {', '.join(settings.sites) if settings.sites else 'ALL'}")
 
 with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_seconds) as http:
     api = MockApiClient(http)
@@ -53,19 +57,24 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
             f"  {site.site_id}  {site.site_type:<14} "
             f"{site.capacity_kw:>7.0f} kW  {site.site_name}"
         )
-    manquants = set(settings.sites) - exposes
-    en_trop = exposes - set(settings.sites)
-    if manquants:
-        anomalies.append(f"SITES contient des sites absents de l'API : {sorted(manquants)}")
-    if en_trop:
-        anomalies.append(f"L'API expose des sites absents de SITES : {sorted(en_trop)}")
-    if not manquants and not en_trop:
-        print(f"\n  La variable SITES correspond exactement aux {len(exposes)} sites exposes.")
+    try:
+        collectes = resolve_site_identifiers(settings.sites, sites)
+    except (UnknownConfiguredSiteError, ValueError) as echec:
+        anomalies.append(str(echec))
+        collectes = []
+    if not collectes:
+        print("\n  La configuration SITES ne peut pas etre resolue, voir le verdict.")
+    elif settings.collects_every_site:
+        print(f"\n  SITES n'impose aucune restriction : les {len(exposes)} sites "
+              "exposes seront collectes.")
+    else:
+        print(f"\n  SITES restreint la collecte a {len(collectes)} des "
+              f"{len(exposes)} sites exposes : {collectes}")
 
     titre("3. Conformite du contrat EnergyReading sur /current")
     qualites: dict[str, int] = {}
     causes: dict[str, int] = {}
-    for site_id in sorted(exposes):
+    for site_id in (collectes or sorted(exposes)):
         brut = http.get_json(f"/api/v1/sites/{site_id}/current", site_id=site_id)
 
         inconnus = set(brut) - DOCUMENTED_FIELDS
@@ -105,7 +114,7 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
     fin = datetime.now()
     debut = fin - timedelta(hours=6)
     cible = sorted(exposes)[1] if len(exposes) > 1 else sorted(exposes)[0]
-    serie = api.fetch_readings_window(cible, debut, fin, page_size=200)
+    serie = api.fetch_readings_window(cible, debut, fin, resolution_seconds=60.0)
     if not serie:
         anomalies.append(f"/readings n'a renvoye aucune mesure pour {cible} sur 6 heures")
         print(f"  {cible} : aucune mesure sur la periode")

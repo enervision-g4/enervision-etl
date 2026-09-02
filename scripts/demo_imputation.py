@@ -18,6 +18,7 @@ from enervision_etl.config import load_settings
 from enervision_etl.contracts.energy_reading import EnergyReading
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import MockApiClient
+from enervision_etl.extract.site_selection import resolve_site_identifiers
 from enervision_etl.transform.imputation import (
     forward_fill_series,
     linear_interpolation_series,
@@ -128,7 +129,7 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
         print("  " + "-" * 36)
         meilleure_plage: list[EnergyReading] = continue_
         meilleur_site = site_demande
-        for site_id in settings.sites:
+        for site_id in resolve_site_identifiers(settings.sites, api.fetch_site_registry()):
             candidate = charger(site_id) if site_id != site_demande else serie
             plage = plus_longue_plage_continue(candidate)
             print(f"  {site_id:<10}{len(candidate):>9}{len(plage):>17}")

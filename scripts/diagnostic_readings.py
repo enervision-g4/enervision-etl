@@ -37,7 +37,7 @@ print(f"Instant de reference (UTC) : {maintenant.isoformat()}")
 with ResilientHttpClient(settings.api_mock_base_url, 15.0) as http:
 
     def lire(debut: datetime, fin: datetime, limit: int) -> list[dict[str, Any]]:
-        return http.get_json(
+        mesures: list[dict[str, Any]] = http.get_json(
             "/api/v1/readings",
             {
                 "site_id": CIBLE,
@@ -46,6 +46,7 @@ with ResilientHttpClient(settings.api_mock_base_url, 15.0) as http:
                 "limit": limit,
             },
         )
+        return mesures
 
     titre("1. Etat instantane des capteurs (source de verite du simulateur)")
     try:

@@ -58,4 +58,6 @@ convention = "google"
 
 [tool.mypy]
 strict = true
-files = ["src"]
+# Les scripts consomment l'API publique du paquet : les inclure fait echouer la
+# verification des qu'une signature change sans que les appelants suivent.
+files = ["src", "scripts"]

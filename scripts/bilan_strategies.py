@@ -21,6 +21,7 @@ from enervision_etl.contracts.energy_reading import EnergyReading
 from enervision_etl.extract.errors import MockApiError
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import MockApiClient
+from enervision_etl.extract.site_selection import resolve_site_identifiers
 from enervision_etl.transform.imputation import (
     forward_fill_series,
     linear_interpolation_series,
@@ -107,15 +108,17 @@ plages_par_type: dict[str, int] = defaultdict(int)
 type_par_site: dict[str, str] = {}
 
 print(f"Resolution {resolution:.0f} s, {nombre_fenetres} fenetres de "
-      f"{DUREE_FENETRE_HEURES} h par site, {len(settings.sites)} sites")
+      f"{DUREE_FENETRE_HEURES} h par site")
 print("Collecte en cours...\n")
 
 with ResilientHttpClient(settings.api_mock_base_url, 20.0) as http:
     api = MockApiClient(http)
-    for site in api.fetch_site_registry():
+    referentiel = api.fetch_site_registry()
+    for site in referentiel:
         type_par_site[site.site_id] = site.site_type
+    sites_collectes = resolve_site_identifiers(settings.sites, referentiel)
 
-    for site_id in settings.sites:
+    for site_id in sites_collectes:
         site_type = type_par_site.get(site_id, "inconnu")
         plages_trouvees = 0
         for index_fenetre in range(nombre_fenetres):
@@ -153,16 +156,19 @@ print(f"  {'type':<12}{'plages':>8}{'trous':>8}{'ffill %':>10}{'interp %':>10}"
 print("  " + "-" * 76)
 
 for site_type in sorted(plages_par_type):
-    recopie = moyenne(recopie_par_type[site_type])
-    interpolation = moyenne(interpolation_par_type[site_type])
-    variation = moyenne(variation_par_type[site_type])
-    if recopie is None or interpolation is None:
+    recopie_moyenne = moyenne(recopie_par_type[site_type])
+    interpolation_moyenne = moyenne(interpolation_par_type[site_type])
+    variation_moyenne = moyenne(variation_par_type[site_type])
+    if recopie_moyenne is None or interpolation_moyenne is None:
         meilleure = "indeterminee"
     else:
-        meilleure = "interpolation" if interpolation < recopie else "forward_fill"
+        meilleure = (
+            "interpolation" if interpolation_moyenne < recopie_moyenne else "forward_fill"
+        )
     print(f"  {site_type:<12}{plages_par_type[site_type]:>8}"
           f"{len(recopie_par_type[site_type]):>8}"
-          f"{colonne(recopie)}{colonne(interpolation)}{colonne(variation)}  {meilleure}")
+          f"{colonne(recopie_moyenne)}{colonne(interpolation_moyenne)}"
+          f"{colonne(variation_moyenne)}  {meilleure}")
 
 toutes_recopies = [e for valeurs in recopie_par_type.values() for e in valeurs]
 toutes_interpolations = [e for valeurs in interpolation_par_type.values() for e in valeurs]
