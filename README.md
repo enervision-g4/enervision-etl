@@ -1,11 +1,19 @@
 # enervision-etl
 
-Pipeline ETL du projet EnerVision. Ce service interroge l'API Mock des 7 sites,
-valide et normalise les mesures, impute les valeurs manquantes de facon tracee,
-puis publie le tout dans Kafka.
+Pipeline de donnees du projet EnerVision. Le collecteur interroge l'API Mock,
+valide et normalise les mesures, impute les valeurs manquantes de facon tracee, puis
+publie dans Kafka. Les consumers relisent ce flux pour alimenter PostgreSQL /
+TimescaleDB et declencher les alertes.
 
-La persistance PostgreSQL / TimescaleDB et le broker Kafka vivent dans le depot
-`enervision-messager-consumer`. Ce service ne parle jamais a la base de donnees.
+Le depot porte les deux extremites de la chaine. Elles restent deux services
+distincts a l'execution, deux conteneurs et deux consumer groups, conformement au
+schema d'architecture. Les reunir dans un depot unique permet de faire evoluer le
+contrat de message et ses deux implementations dans une seule modification, la ou
+deux depots separes auraient laisse une fenetre d'incompatibilite entre les deux
+deploiements.
+
+Le broker Kafka et la base de donnees sont de l'infrastructure : ils sont declares
+dans `enervision-devops`.
 
 ## Principe directeur
 
@@ -135,12 +143,30 @@ estime le fuseau des horodatages. Elle sort en code 1 des qu'un ecart est detect
 ## Structure
 
 ```
-src/enervision_etl/
-  config.py         configuration validee au demarrage
-  contracts/        modeles Pydantic acceptant les valeurs nulles
-  extract/          client HTTP resilient et client type de l'API Mock
+src/
+  enervision_contracts/   vocabulaire commun aux deux extremites de la chaine
+    energy_reading.py     mesure brute, valeurs nulles preservees
+    imputed_reading.py    mesure reconstruite et methode appliquee
+    site.py               referentiel des sites
+  enervision_etl/         collecteur
+    config.py             configuration validee au demarrage
+    extract/              client HTTP resilient et client type de l'API Mock
+    transform/            normalisation UTC et imputation
+    load/                 publication vers Kafka
+  enervision_consumer/    consumers de persistance et d'alerting
 scripts/
-  sonde_api.py      controle de conformite d'une instance de l'API Mock
+  sonde_api.py            controle de conformite d'une instance de l'API Mock
+  diagnostic_readings.py  caracterisation de l'endpoint historique
+  demo_imputation.py      justesse de l'imputation sur donnees reelles
+  bilan_strategies.py     comparaison des strategies sur l'ensemble du parc
 tests/
-  fixtures/         les quatre cas de la documentation : good, partial, degraded, critical
+  conftest.py             fixtures partagees
+  fixtures/               les quatre cas de qualite : good, partial, degraded, critical
+  contracts/              miroir de src/enervision_contracts
+  etl/                    miroir de src/enervision_etl
 ```
+
+`enervision_contracts` ne depend que de Pydantic. Cette isolation n'est pas une
+convention mais une regle verifiee : `tests/test_contracts_isolation.py` analyse les
+imports du paquet et echoue s'il tire une dependance d'infrastructure. Un consumer
+peut ainsi importer les contrats sans installer le client HTTP ni le client Kafka.
