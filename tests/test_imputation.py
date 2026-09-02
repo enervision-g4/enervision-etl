@@ -5,9 +5,12 @@ import pytest
 
 from enervision_etl.contracts.energy_reading import MEASUREMENT_FIELD_NAMES, EnergyReading
 from enervision_etl.transform.imputation import (
+    DEFAULT_IMPUTATION_METHOD,
     ImputationMethod,
     forward_fill_series,
+    impute_series,
     linear_interpolation_series,
+    method_for_site_type,
 )
 
 SERIES_START = datetime(2026, 9, 2, 10, 0, 0)
@@ -367,3 +370,96 @@ def test_duplicated_timestamps_cannot_produce_a_division_by_zero() -> None:
     imputed = linear_interpolation_series(series, max_gap_measures=3)
 
     assert imputed[1].consumption_kw is None
+
+
+@pytest.mark.parametrize("stable_site_type", ["datacenter", "hospital"])
+def test_a_stable_site_is_reconstructed_by_carrying_the_last_value(
+    stable_site_type: str,
+) -> None:
+    assert method_for_site_type(stable_site_type) == ImputationMethod.FORWARD_FILL
+
+
+@pytest.mark.parametrize("varying_site_type", ["office", "factory", "retail"])
+def test_a_varying_site_is_reconstructed_by_interpolation(varying_site_type: str) -> None:
+    assert method_for_site_type(varying_site_type) == ImputationMethod.LINEAR_INTERPOLATION
+
+
+def test_the_site_type_is_matched_regardless_of_case_and_spacing() -> None:
+    assert method_for_site_type("  DataCenter ") == ImputationMethod.FORWARD_FILL
+
+
+@pytest.mark.parametrize("unmapped_site_type", ["warehouse", "", None])
+def test_an_unmapped_site_type_falls_back_to_the_default_method(
+    unmapped_site_type: Optional[str],
+) -> None:
+    # Un type inedit ne doit jamais faire echouer le pipeline : il prend la strategie
+    # par defaut, quitte a etre affine plus tard.
+    assert method_for_site_type(unmapped_site_type) == DEFAULT_IMPUTATION_METHOD
+
+
+def test_an_explicit_override_wins_over_the_documented_mapping() -> None:
+    chosen = method_for_site_type(
+        "hospital",
+        overrides={"hospital": ImputationMethod.LINEAR_INTERPOLATION},
+    )
+
+    assert chosen == ImputationMethod.LINEAR_INTERPOLATION
+
+
+def test_a_stable_site_fills_a_trailing_gap() -> None:
+    series = build_series([875.4, 880.1, None])
+
+    imputed = impute_series(series, site_type="hospital", max_gap_measures=3)
+
+    assert imputed[2].consumption_kw == 880.1
+    assert imputed[2].imputation_method == ImputationMethod.FORWARD_FILL
+
+
+def test_a_varying_site_refuses_a_trailing_gap() -> None:
+    series = build_series([875.4, 880.1, None])
+
+    imputed = impute_series(series, site_type="factory", max_gap_measures=3)
+
+    assert imputed[2].consumption_kw is None
+    assert imputed[2].imputation_method == ImputationMethod.NONE
+
+
+def test_a_varying_site_interpolates_an_inner_gap() -> None:
+    series = build_series([100.0, None, 200.0])
+
+    imputed = impute_series(series, site_type="factory", max_gap_measures=3)
+
+    assert imputed[1].consumption_kw == pytest.approx(150.0)
+    assert imputed[1].imputation_method == ImputationMethod.LINEAR_INTERPOLATION
+
+
+def test_without_lookahead_interpolation_degrades_to_carrying_forward() -> None:
+    # Un collecteur temps reel ne connait pas la mesure suivante au moment ou il
+    # traite la mesure courante. La strategie doit alors se replier, pas echouer.
+    series = build_series([100.0, None, 200.0])
+
+    imputed = impute_series(
+        series,
+        site_type="factory",
+        max_gap_measures=3,
+        lookahead_available=False,
+    )
+
+    assert imputed[1].consumption_kw == 100.0
+    assert imputed[1].imputation_method == ImputationMethod.FORWARD_FILL
+
+
+def test_without_lookahead_a_stable_site_is_unaffected() -> None:
+    series = build_series([100.0, None, 200.0])
+
+    with_lookahead = impute_series(series, "hospital", 3, lookahead_available=True)
+    without_lookahead = impute_series(series, "hospital", 3, lookahead_available=False)
+
+    assert consumptions_of(with_lookahead) == consumptions_of(without_lookahead)
+
+
+def test_the_documented_mapping_covers_every_type_exposed_by_the_api() -> None:
+    # Les cinq types releves sur l'instance reelle doivent tous produire une
+    # strategie exploitable, sans exception ni valeur nulle.
+    for site_type in ("office", "factory", "datacenter", "retail", "hospital"):
+        assert isinstance(method_for_site_type(site_type), ImputationMethod)

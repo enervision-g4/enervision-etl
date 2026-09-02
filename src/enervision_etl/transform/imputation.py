@@ -15,13 +15,89 @@ mesures, une valeur reconstruite n'est plus une estimation mais une invention.
 Toutes les fonctions sont pures : meme entree, meme sortie, aucun effet de bord.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from itertools import pairwise
-from typing import Optional
+from typing import Final, Optional
 
 from ..contracts.energy_reading import MEASUREMENT_FIELD_NAMES, EnergyReading
 from ..contracts.imputed_reading import ImputationMethod, ImputedReading
+
+DEFAULT_IMPUTATION_METHOD: Final[ImputationMethod] = ImputationMethod.LINEAR_INTERPOLATION
+"""Strategie retenue pour tout type de site absent de la table ci dessous."""
+
+# Table issue de la documentation du projet, qui associe le forward fill aux sites a
+# consommation reputee stable. Une campagne de mesure menee sur l'instance mock n'a pas
+# pu confirmer cette regle : les series generees se comportent en marche aleatoire, et
+# les plages exploitables etaient trop rares pour conclure. La regle documentee est donc
+# conservee, mais exposee comme une table modifiable plutot que codee en dur.
+IMPUTATION_METHOD_BY_SITE_TYPE: Final[dict[str, ImputationMethod]] = {
+    "datacenter": ImputationMethod.FORWARD_FILL,
+    "hospital": ImputationMethod.FORWARD_FILL,
+    "office": ImputationMethod.LINEAR_INTERPOLATION,
+    "factory": ImputationMethod.LINEAR_INTERPOLATION,
+    "retail": ImputationMethod.LINEAR_INTERPOLATION,
+}
+
+
+def method_for_site_type(
+    site_type: Optional[str],
+    overrides: Optional[Mapping[str, ImputationMethod]] = None,
+) -> ImputationMethod:
+    """Determine la strategie de reconstruction adaptee a un type de site.
+
+    Args:
+        site_type: Type de site issu du referentiel, insensible a la casse et aux
+            espaces superflus. Un type inconnu ou absent prend la strategie par defaut.
+        overrides: Table prioritaire sur la correspondance documentee, permettant
+            d'ajuster un site sans modifier le code.
+
+    Returns:
+        La strategie a appliquer aux series de ce type de site.
+    """
+    if site_type is None:
+        return DEFAULT_IMPUTATION_METHOD
+
+    normalized_site_type = site_type.strip().lower()
+    if overrides and normalized_site_type in overrides:
+        return overrides[normalized_site_type]
+    return IMPUTATION_METHOD_BY_SITE_TYPE.get(normalized_site_type, DEFAULT_IMPUTATION_METHOD)
+
+
+def impute_series(
+    readings: list[EnergyReading],
+    site_type: Optional[str],
+    max_gap_measures: int,
+    overrides: Optional[Mapping[str, ImputationMethod]] = None,
+    lookahead_available: bool = True,
+) -> list[ImputedReading]:
+    """Reconstruit une serie en choisissant la strategie adaptee au site.
+
+    Point d'entree du module. L'appelant fournit le type de site plutot que la
+    strategie, ce qui evite de disperser la regle metier dans le code du collecteur.
+
+    L'interpolation exige de connaitre la mesure suivante. Un collecteur temps reel
+    ne la connait pas au moment ou il traite la mesure courante : passer
+    lookahead_available a False replie alors la strategie sur le forward fill, qui
+    ne consulte que le passe, au lieu de renoncer a toute reconstruction.
+
+    Args:
+        readings: Releves d'un meme site, tries par horodatage croissant.
+        site_type: Type de site issu du referentiel.
+        max_gap_measures: Longueur maximale d'un trou encore comblable.
+        overrides: Table prioritaire sur la correspondance documentee.
+        lookahead_available: Faux lorsque la mesure suivante est inconnue.
+
+    Returns:
+        Une serie reconstruite de meme longueur, aux memes horodatages.
+
+    Raises:
+        ValueError: Si les invariants de la serie ne sont pas respectes.
+    """
+    method = method_for_site_type(site_type, overrides)
+    if not lookahead_available and method is ImputationMethod.LINEAR_INTERPOLATION:
+        method = ImputationMethod.FORWARD_FILL
+    return _impute_series(readings, max_gap_measures, method)
 
 
 def forward_fill_series(
