@@ -1,0 +1,14 @@
+{
+  "timestamp": "2024-06-15T14:32:05.987654",
+  "site_id": "SITE001",
+  "site_type": "office",
+  "consumption_kw": 91.20,
+  "consumption_kwh": 91.20,
+  "voltage_v": 399.8,
+  "current_a": 135.1,
+  "power_factor": 0.918,
+  "temperature_celsius": null,
+  "humidity_percent": 60.2,
+  "null_reasons": ["temperature_sensor_failure"],
+  "data_quality": "partial"
+}
