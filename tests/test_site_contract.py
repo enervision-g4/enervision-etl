@@ -11,7 +11,7 @@ def test_site_registry_is_parsed(site_registry_payload: list[dict[str, Any]]) ->
 
     assert [site.site_id for site in sites] == ["SITE001", "SITE002", "SITE003"]
     assert sites[1].capacity_kw == 1000
-    assert sites[2].site_type == "data_center"
+    assert sites[2].site_type == "datacenter"
 
 
 def test_zero_capacity_is_rejected(site_registry_payload: list[dict[str, Any]]) -> None:

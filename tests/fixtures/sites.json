@@ -17,7 +17,7 @@
   },
   {
     "site_id": "SITE003",
-    "site_type": "data_center",
+    "site_type": "datacenter",
     "site_name": "Data Center Marseille",
     "location": "Marseille, France",
     "capacity_kw": 800,
