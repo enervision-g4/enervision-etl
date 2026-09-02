@@ -28,10 +28,13 @@ class EtlSettings(BaseSettings):
         api_mock_timeout_seconds: Delai d'attente applique a chaque requete.
         api_mock_source_timezone: Fuseau suppose des horodatages naifs de l'API.
         poll_interval_seconds: Periode du collecteur temps reel.
+        site_refresh_interval_seconds: Delai entre deux verifications de la liste
+            des sites. Une republication n'a lieu que si un site a change.
         sites: Identifiants des sites a collecter. Une liste vide, absente ou
             reduite au mot ALL demande la collecte de tout le parc expose par l'API.
         kafka_bootstrap_servers: Broker Kafka du conteneur messager-consumer.
-        kafka_topic_site: Topic alimentant la table SITE, a politique de compaction.
+        kafka_topic_site: Topic de la liste des sites, alimentant la table SITE.
+            A creer avec une politique de compaction.
         kafka_topic_measure_raw: Topic alimentant la table MEASURE_RAW.
         kafka_topic_measure_imputed: Topic alimentant la table MEASURE_IMPUTED.
         kafka_topic_alert: Topic alimentant la table ALERT.
@@ -51,6 +54,7 @@ class EtlSettings(BaseSettings):
     api_mock_source_timezone: str = "UTC"
 
     poll_interval_seconds: int = Field(default=60, gt=0)
+    site_refresh_interval_seconds: float = Field(default=3600.0, gt=0)
     sites: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     kafka_bootstrap_servers: str = Field(min_length=1)

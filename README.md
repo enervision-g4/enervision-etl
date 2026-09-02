@@ -58,6 +58,7 @@ cp .env.example .env
 | `API_MOCK_TIMEOUT_SECONDS` | Delai d'attente applique a chaque requete |
 | `API_MOCK_SOURCE_TIMEZONE` | Fuseau suppose des horodatages naifs renvoyes par l'API |
 | `POLL_INTERVAL_SECONDS` | Periode du collecteur temps reel |
+| `SITE_REFRESH_INTERVAL_SECONDS` | Delai entre deux verifications du referentiel |
 | `SITES` | Vide ou `ALL` pour tout le parc, sinon liste separee par des virgules |
 | `KAFKA_BOOTSTRAP_SERVERS` | Broker Kafka du conteneur messager-consumer |
 | `KAFKA_TOPIC_SITE` | Topic alimentant la table `SITE`, a politique de compaction |
@@ -78,8 +79,14 @@ Chaque topic porte le nom de la table qu'il alimente, prefixe par le domaine :
 destination d'un message se lit donc sans documentation, et les deux depots partagent
 le meme vocabulaire que le MCD.
 
-Le referentiel des sites fera l'objet d'un topic `enervision.site` a politique de
-compaction, puisqu'il decrit un etat courant et non une suite d'evenements.
+Le referentiel des sites passe par le topic `enervision.site`, qui **doit etre cree
+avec `cleanup.policy=compact`**. Il decrit un etat courant et non une suite
+d'evenements : seul le dernier message par site a besoin d'etre conserve. Cette
+propriete appartient au topic et non au producteur, elle est donc a appliquer a sa
+creation, cote infrastructure.
+
+Le collecteur ne rediffuse un site que si ses caracteristiques ont change. En regime
+stable, le topic ne recoit donc rien.
 
 Les noms restent configurables : les valeurs ci dessus ne sont que des defauts.
 
