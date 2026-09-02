@@ -23,8 +23,8 @@ from datetime import datetime
 from itertools import pairwise
 from typing import Final, Optional
 
-from ..contracts.energy_reading import MEASUREMENT_FIELD_NAMES, EnergyReading
-from ..contracts.imputed_reading import ImputationMethod, ImputedReading
+from enervision_contracts.energy_reading import MEASUREMENT_FIELD_NAMES, EnergyReading
+from enervision_contracts.imputed_reading import ImputationMethod, ImputedReading
 
 DEFAULT_IMPUTATION_METHOD: Final[ImputationMethod] = ImputationMethod.LINEAR_INTERPOLATION
 """Strategie retenue pour tout type de site absent de la table ci dessous."""

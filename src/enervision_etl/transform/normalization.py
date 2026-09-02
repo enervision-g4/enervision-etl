@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..contracts.energy_reading import EnergyReading
+from enervision_contracts.energy_reading import EnergyReading
 
 LOAD_PERCENT_DECIMALS = 2
 """Nombre de decimales conservees pour le taux de charge."""

@@ -10,8 +10,9 @@ from datetime import datetime, timedelta
 from math import ceil
 from typing import Any, Final, Optional
 
-from ..contracts.energy_reading import EnergyReading
-from ..contracts.site import Site
+from enervision_contracts.energy_reading import EnergyReading
+from enervision_contracts.site import Site
+
 from .errors import MockApiError
 from .http_client import ResilientHttpClient
 

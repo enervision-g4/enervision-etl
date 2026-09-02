@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from enervision_etl.contracts.site import Site
+from enervision_contracts.site import Site
 
 
 def test_site_registry_is_parsed(site_registry_payload: list[dict[str, Any]]) -> None:

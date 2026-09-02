@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from enervision_etl.contracts.energy_reading import (
+from enervision_contracts.energy_reading import (
     MEASUREMENT_FIELD_NAMES,
     EnergyReading,
 )

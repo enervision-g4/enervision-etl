@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from enervision_etl.contracts.energy_reading import EnergyReading
+from enervision_contracts.energy_reading import EnergyReading
 from enervision_etl.transform.normalization import (
     compute_load_percent,
     normalize_reading,
