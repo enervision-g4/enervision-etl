@@ -1,0 +1,14 @@
+{
+  "timestamp": "2024-06-15T14:32:00.123456",
+  "site_id": "SITE001",
+  "site_type": "office",
+  "consumption_kw": 87.34,
+  "consumption_kwh": 87.34,
+  "voltage_v": 401.2,
+  "current_a": 132.5,
+  "power_factor": 0.923,
+  "temperature_celsius": 22.1,
+  "humidity_percent": 58.4,
+  "null_reasons": [],
+  "data_quality": "good"
+}

@@ -41,6 +41,8 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "ANN", "RUF"]
+# Les regles de codage du projet imposent Optional[X] plutot que la forme X | None.
+ignore = ["UP007", "UP045"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ANN"]

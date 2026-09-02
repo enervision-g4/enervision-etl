@@ -1,0 +1,30 @@
+[
+  {
+    "timestamp": "2024-06-14T14:32:00",
+    "site_id": "SITE002",
+    "site_type": "factory",
+    "consumption_kw": 542.10,
+    "consumption_kwh": 542.10,
+    "voltage_v": 398.5,
+    "current_a": 826.4,
+    "power_factor": 0.921,
+    "temperature_celsius": 18.3,
+    "humidity_percent": 62.1,
+    "null_reasons": [],
+    "data_quality": "good"
+  },
+  {
+    "timestamp": "2024-06-14T15:02:00",
+    "site_id": "SITE002",
+    "site_type": "factory",
+    "consumption_kw": null,
+    "consumption_kwh": null,
+    "voltage_v": null,
+    "current_a": null,
+    "power_factor": null,
+    "temperature_celsius": 18.5,
+    "humidity_percent": 61.8,
+    "null_reasons": ["consumption_sensor_failure", "electrical_sensor_failure"],
+    "data_quality": "degraded"
+  }
+]
