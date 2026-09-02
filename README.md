@@ -52,15 +52,27 @@ cp .env.example .env
 | `POLL_INTERVAL_SECONDS` | Periode du collecteur temps reel |
 | `SITES` | Vide ou `ALL` pour tout le parc, sinon liste separee par des virgules |
 | `KAFKA_BOOTSTRAP_SERVERS` | Broker Kafka du conteneur messager-consumer |
-| `KAFKA_TOPIC_READINGS` | Topic des mesures brutes |
-| `KAFKA_TOPIC_READINGS_IMPUTED` | Topic des mesures imputees |
-| `KAFKA_TOPIC_ALERTS` | Topic des alertes |
+| `KAFKA_TOPIC_MEASURE_RAW` | Topic alimentant la table `MEASURE_RAW` |
+| `KAFKA_TOPIC_MEASURE_IMPUTED` | Topic alimentant la table `MEASURE_IMPUTED` |
+| `KAFKA_TOPIC_ALERT` | Topic alimentant la table `ALERT` |
 | `METRICS_PORT` | Port d'exposition des metriques Prometheus |
 | `IMPUTATION_MAX_GAP_MEASURES` | Longueur maximale d'un trou encore imputable |
 
 Le service refuse de demarrer si `API_MOCK_BASE_URL` ou `KAFKA_BOOTSTRAP_SERVERS`
 sont absents. Une configuration incomplete echoue immediatement, avec un message
 explicite, plutot qu'au bout de plusieurs minutes de fonctionnement.
+
+### Nommage des topics Kafka
+
+Chaque topic porte le nom de la table qu'il alimente, prefixe par le domaine :
+`enervision.measure_raw`, `enervision.measure_imputed`, `enervision.alert`. La
+destination d'un message se lit donc sans documentation, et les deux depots partagent
+le meme vocabulaire que le MCD.
+
+Le referentiel des sites fera l'objet d'un topic `enervision.site` a politique de
+compaction, puisqu'il decrit un etat courant et non une suite d'evenements.
+
+Les noms restent configurables : les valeurs ci dessus ne sont que des defauts.
 
 ### Selection des sites
 
