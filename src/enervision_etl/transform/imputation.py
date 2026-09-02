@@ -4,6 +4,9 @@ Ce module ne modifie jamais la donnee brute. Il produit une serie parallele, de 
 longueur et de memes horodatages, ou les trous courts sont combles et ou chaque ligne
 declare la methode qui lui a ete appliquee.
 
+Le choix de la strategie par type de site est une hypothese de l'equipe, non validee
+par la mesure. Voir le commentaire de IMPUTATION_METHOD_BY_SITE_TYPE.
+
 Deux principes structurent le traitement :
 
 Les trous sont evalues champ par champ. Une panne du thermometre ne justifie pas de
@@ -26,11 +29,22 @@ from ..contracts.imputed_reading import ImputationMethod, ImputedReading
 DEFAULT_IMPUTATION_METHOD: Final[ImputationMethod] = ImputationMethod.LINEAR_INTERPOLATION
 """Strategie retenue pour tout type de site absent de la table ci dessous."""
 
-# Table issue de la documentation du projet, qui associe le forward fill aux sites a
-# consommation reputee stable. Une campagne de mesure menee sur l'instance mock n'a pas
-# pu confirmer cette regle : les series generees se comportent en marche aleatoire, et
-# les plages exploitables etaient trop rares pour conclure. La regle documentee est donc
-# conservee, mais exposee comme une table modifiable plutot que codee en dur.
+# Hypothese retenue par l'equipe, et non consigne du cahier des charges : un site a
+# consommation reputee stable, datacenter ou hopital, gagnerait moins a l'interpolation
+# qu'a la recopie de la derniere valeur connue.
+#
+# Cette hypothese n'est pas confirmee par la mesure. Le protocole et les resultats sont
+# reproductibles avec scripts/bilan_strategies.py : sur l'instance mock, l'interpolation
+# faisait aussi bien ou mieux y compris sur SITE005, l'hopital. Deux limites empechent
+# de conclure dans un sens ou dans l'autre. Les series generees se comportent en marche
+# aleatoire plutot qu'en profil de charge, la notion de site stable n'y a donc pas de
+# realite. Et les pannes du simulateur sont si etendues que le parc entier n'a fourni
+# que douze trous exploitables, echantillon trop faible pour departager.
+#
+# La table est donc conservee comme hypothese de travail, exposee en donnee modifiable
+# plutot que codee en dur, et surchargeable par site via le parametre overrides. Le
+# critere reellement determinant est ailleurs : sans connaissance de la mesure suivante,
+# seule la recopie est applicable. Voir impute_series et son parametre lookahead_available.
 IMPUTATION_METHOD_BY_SITE_TYPE: Final[dict[str, ImputationMethod]] = {
     "datacenter": ImputationMethod.FORWARD_FILL,
     "hospital": ImputationMethod.FORWARD_FILL,

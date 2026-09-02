@@ -85,9 +85,10 @@ class EnergyReading(BaseModel):
     def has_known_data_quality(self) -> bool:
         """Indique si le niveau de qualite fait partie des valeurs documentees.
 
-        La documentation ne garantit pas l'exhaustivite de cette liste. Cette methode
-        permet de signaler une valeur inedite en supervision sans jamais rejeter la
-        mesure, sous peine de perdre de la donnee.
+        Cette liste n'est pas fermee. L'instance reelle emet par exemple la cause
+        humidity_sensor_failure, absente du contrat initial. Signaler une valeur inedite
+        en supervision, sans jamais rejeter la mesure, evite qu'une evolution de l'API
+        interrompe la collecte.
 
         Returns:
             True si data_quality appartient a KNOWN_DATA_QUALITY_LEVELS.

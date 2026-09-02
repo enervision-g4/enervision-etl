@@ -1,9 +1,9 @@
 """Compare les strategies d'imputation sur l'ensemble du parc, pour trancher par la mesure.
 
-La documentation recommande le forward fill pour les sites a consommation stable et
-l'interpolation lineaire ailleurs. Ce script verifie si les donnees de l'API mock
-soutiennent cette regle, en accumulant les erreurs sur tous les sites et sur plusieurs
-fenetres temporelles, plutot que sur un echantillon unique.
+L'equipe fait l'hypothese qu'un site a consommation stable gagne moins a
+l'interpolation qu'a la recopie de la derniere valeur connue. Ce script verifie si les
+donnees de l'API mock soutiennent cette hypothese, en accumulant les erreurs sur tous
+les sites et sur plusieurs fenetres temporelles, plutot que sur un echantillon unique.
 
 Usage:
     uv run python scripts/bilan_strategies.py [resolution_secondes] [nombre_de_fenetres]
@@ -183,5 +183,5 @@ print(f"  forward_fill         {mean(toutes_recopies):>6.2f} %")
 print(f"  linear_interpolation {mean(toutes_interpolations):>6.2f} %")
 ecart = 100 * (mean(toutes_recopies) - mean(toutes_interpolations)) / mean(toutes_recopies)
 print(f"\n  L'interpolation fait {ecart:+.1f} % de mieux que la recopie sur ce parc.")
-print("\n  La documentation recommande le forward fill pour datacenter et hospital.")
-print("  Les lignes ci dessus disent si les donnees du mock soutiennent cette regle.")
+print("\n  Hypothese testee : forward fill preferable sur datacenter et hospital.")
+print("  Les lignes ci dessus disent si les donnees du mock la soutiennent.")
