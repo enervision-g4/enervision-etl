@@ -31,9 +31,9 @@ class EtlSettings(BaseSettings):
         sites: Identifiants des sites a collecter. Une liste vide, absente ou
             reduite au mot ALL demande la collecte de tout le parc expose par l'API.
         kafka_bootstrap_servers: Broker Kafka du conteneur messager-consumer.
-        kafka_topic_readings: Topic des mesures brutes.
-        kafka_topic_readings_imputed: Topic des mesures imputees.
-        kafka_topic_alerts: Topic des alertes.
+        kafka_topic_measure_raw: Topic alimentant la table MEASURE_RAW.
+        kafka_topic_measure_imputed: Topic alimentant la table MEASURE_IMPUTED.
+        kafka_topic_alert: Topic alimentant la table ALERT.
         metrics_port: Port d'exposition des metriques Prometheus.
         imputation_max_gap_measures: Longueur maximale d'un trou encore imputable.
     """
@@ -53,9 +53,11 @@ class EtlSettings(BaseSettings):
     sites: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     kafka_bootstrap_servers: str = Field(min_length=1)
-    kafka_topic_readings: str = "enervision.readings.raw"
-    kafka_topic_readings_imputed: str = "enervision.readings.imputed"
-    kafka_topic_alerts: str = "enervision.alerts"
+    # Un topic par table du MCD, ce qui rend la destination de chaque message lisible
+    # sans documentation et aligne les deux depots sur un vocabulaire unique.
+    kafka_topic_measure_raw: str = "enervision.measure_raw"
+    kafka_topic_measure_imputed: str = "enervision.measure_imputed"
+    kafka_topic_alert: str = "enervision.alert"
 
     metrics_port: int = Field(default=8001, gt=0, le=65535)
     imputation_max_gap_measures: int = Field(default=3, gt=0)

@@ -2,8 +2,8 @@
 
 Expose chaque endpoint sous forme de methode renvoyant des objets valides plutot
 que du JSON brut. Le comportement de /api/v1/readings encode ici a ete mesure sur
-une instance reelle et differe de la lecture naive de la documentation : voir
-fetch_readings_window.
+une instance reelle et contredit l'interpretation initiale du parametre limit :
+voir fetch_readings_window.
 """
 
 from datetime import datetime, timedelta
@@ -15,7 +15,7 @@ from ..contracts.site import Site
 from .errors import MockApiError
 from .http_client import ResilientHttpClient
 
-# Plafond impose par la documentation de l'endpoint /api/v1/readings.
+# Plafond de /api/v1/readings, verifie sur l'instance : au dela, l'API repond 422.
 MAX_READINGS_PER_REQUEST: Final[int] = 1000
 
 # Resolution par defaut, alignee sur la periode de polling du collecteur temps reel.

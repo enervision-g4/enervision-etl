@@ -1,4 +1,8 @@
-"""Confronte l'API mock reelle au contrat documente. A lancer une fois l'URL connue."""
+"""Confronte l'API mock reelle au contrat que le collecteur suppose.
+
+A lancer avant de developper contre une nouvelle instance : les ecarts entre le
+contrat suppose et l'instance deployee sont la premiere cause de bug silencieux.
+"""
 import sys
 from datetime import datetime, timedelta
 from itertools import pairwise
@@ -153,8 +157,8 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
 
 titre("VERDICT")
 if anomalies:
-    print(f"  {len(anomalies)} ecart(s) entre la documentation et l'instance reelle :\n")
+    print(f"  {len(anomalies)} ecart(s) entre le contrat attendu et l'instance reelle :\n")
     for anomalie in anomalies:
         print(f"    - {anomalie}")
     sys.exit(1)
-print("  Aucun ecart. L'instance est conforme au contrat documente en v1.1.0.")
+print("  Aucun ecart. L'instance est conforme au contrat attendu par le collecteur.")

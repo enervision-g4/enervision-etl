@@ -10,9 +10,9 @@ CONFIGURABLE_VARIABLES = (
     "POLL_INTERVAL_SECONDS",
     "SITES",
     "KAFKA_BOOTSTRAP_SERVERS",
-    "KAFKA_TOPIC_READINGS",
-    "KAFKA_TOPIC_READINGS_IMPUTED",
-    "KAFKA_TOPIC_ALERTS",
+    "KAFKA_TOPIC_MEASURE_RAW",
+    "KAFKA_TOPIC_MEASURE_IMPUTED",
+    "KAFKA_TOPIC_ALERT",
     "METRICS_PORT",
     "IMPUTATION_MAX_GAP_MEASURES",
 )
@@ -52,7 +52,9 @@ def test_site_list_is_not_mandatory(isolated_environment: pytest.MonkeyPatch) ->
     build_settings()
 
 
-def test_defaults_match_the_specification(isolated_environment: pytest.MonkeyPatch) -> None:
+def test_defaults_match_the_project_conventions(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
     for variable_name, value in MINIMAL_ENVIRONMENT.items():
         isolated_environment.setenv(variable_name, value)
 
@@ -61,9 +63,9 @@ def test_defaults_match_the_specification(isolated_environment: pytest.MonkeyPat
     assert settings.api_mock_timeout_seconds == 5.0
     assert settings.poll_interval_seconds == 60
     assert settings.api_mock_source_timezone == "UTC"
-    assert settings.kafka_topic_readings == "enervision.readings.raw"
-    assert settings.kafka_topic_readings_imputed == "enervision.readings.imputed"
-    assert settings.kafka_topic_alerts == "enervision.alerts"
+    assert settings.kafka_topic_measure_raw == "enervision.measure_raw"
+    assert settings.kafka_topic_measure_imputed == "enervision.measure_imputed"
+    assert settings.kafka_topic_alert == "enervision.alert"
     assert settings.metrics_port == 8001
     assert settings.imputation_max_gap_measures == 3
 
@@ -187,6 +189,36 @@ def test_base_url_without_http_scheme_is_rejected(
 
     with pytest.raises(ValidationError):
         build_settings()
+
+
+def test_every_topic_is_named_after_a_table_of_the_data_model(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
+    for variable_name, value in MINIMAL_ENVIRONMENT.items():
+        isolated_environment.setenv(variable_name, value)
+
+    settings = build_settings()
+
+    for topic in (
+        settings.kafka_topic_measure_raw,
+        settings.kafka_topic_measure_imputed,
+        settings.kafka_topic_alert,
+    ):
+        prefixe, _, table = topic.partition(".")
+        assert prefixe == "enervision"
+        assert table in {"measure_raw", "measure_imputed", "alert", "site"}
+
+
+def test_a_topic_can_be_overridden_from_the_environment(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
+    for variable_name, value in MINIMAL_ENVIRONMENT.items():
+        isolated_environment.setenv(variable_name, value)
+    isolated_environment.setenv("KAFKA_TOPIC_MEASURE_RAW", "enervision.mesures")
+
+    settings = build_settings()
+
+    assert settings.kafka_topic_measure_raw == "enervision.mesures"
 
 
 def test_non_positive_poll_interval_is_rejected(

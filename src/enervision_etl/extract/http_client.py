@@ -1,7 +1,7 @@
 """Client HTTP resilient pour l'API mock.
 
-Apporte aux appels ce que les extraits pedagogiques de la documentation ne
-couvrent pas : session reutilisee, delai d'attente explicite sur chaque requete,
+Apporte aux appels ce qu'un simple requests.get ne couvre pas :
+session reutilisee, delai d'attente explicite sur chaque requete,
 rejeu exponentiel limite aux pannes transitoires, et traduction des codes
 HTTP en exceptions metier distinctes.
 """

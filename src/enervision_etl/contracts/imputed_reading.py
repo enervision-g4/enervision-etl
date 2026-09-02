@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ImputationMethod(StrEnum):
-    """Strategies de reconstruction, nommees comme dans la documentation du projet.
+    """Strategies de reconstruction, nommees selon les termes usuels du domaine.
 
     La valeur portee par une ligne decrit ce qui lui a reellement ete applique.
     NONE signale une mesure laissee telle quelle, soit parce qu'elle etait complete,
