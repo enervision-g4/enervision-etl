@@ -101,6 +101,37 @@ la charge entre plusieurs instances du collecteur. Un identifiant configure mais
 absent du referentiel fait echouer le demarrage, avec la liste des identifiants
 introuvables.
 
+## Lancement
+
+Deux commandes. La destination des messages est choisie par `PUBLISHER_TARGET` :
+`stdout` pour derouler la chaine sans broker, `kafka` pour publier reellement.
+
+Collecte temps reel, un cycle toutes les `POLL_INTERVAL_SECONDS` :
+
+```bash
+uv run enervision-etl collect-realtime
+uv run enervision-etl collect-realtime --cycles 3   # s'arrete apres trois cycles
+```
+
+Rattrapage historique d'un site :
+
+```bash
+uv run enervision-etl backfill --site SITE002 --hours 24 --resolution 60
+```
+
+Les messages partent sur la sortie standard, les journaux sur la sortie d'erreur. Les
+separer permet de rediriger le flux dans un fichier sans y meler les logs :
+
+```bash
+uv run enervision-etl backfill --site SITE002 --hours 6 > messages.jsonl
+```
+
+Ce fichier reproduit ce que Kafka transporterait, et sert de jeu d'essai aux consumers.
+
+Une fenetre integralement nulle est refusee : ce n'est pas un historique mais l'etat
+d'une panne au moment de l'appel, projete sur toute la periode. `--force-degenerate`
+passe outre.
+
 ## Verification
 
 ```bash
