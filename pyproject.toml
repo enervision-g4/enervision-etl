@@ -11,6 +11,8 @@ dependencies = [
     "prometheus-client>=0.21",
     "structlog>=24.4",
     "typer>=0.15",
+    # Windows ne fournit aucune base de fuseaux horaires : zoneinfo la lit dans ce paquet.
+    "tzdata>=2024.1 ; sys_platform == 'win32'",
 ]
 
 [dependency-groups]
