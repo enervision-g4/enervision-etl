@@ -1,0 +1,271 @@
+"""Enveloppe des messages echanges entre le collecteur et les consumers.
+
+Ce module est le contrat d'interface de la chaine. Il est lu et ecrit par les deux
+extremites, et toute modification incompatible casse la chaine des deux cotes a la fois.
+
+Trois regles le gouvernent.
+
+Le payload epouse strictement les colonnes du modele de donnees. Aucun champ derive ni
+denormalise n'y figure : ce qui se recalcule par jointure n'a pas a transiter.
+
+Un champ inconnu est tolere a la lecture. Pendant un deploiement, un consumer peut lire
+des messages produits par une version plus recente ; rejeter le message couperait la
+chaine pour un champ qu'il aurait suffi d'ignorer. Corollaire : seules les evolutions
+additives sont sures, et schema_version doit accompagner toute rupture.
+
+Les horodatages sont situes et exprimes en UTC. Un horodatage naif oblige le consumer
+a deviner un fuseau, et la donnee se decale silencieusement.
+"""
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Final, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .energy_reading import EnergyReading
+from .imputed_reading import ImputationMethod, ImputedReading
+from .site import Site
+
+SCHEMA_VERSION: Final[str] = "1.0.0"
+"""Version du contrat. A incrementer des qu'une evolution n'est pas additive."""
+
+
+class EventType(StrEnum):
+    """Nature du message, alignee sur la table de destination."""
+
+    MEASURE_RAW = "measure_raw"
+    MEASURE_IMPUTED = "measure_imputed"
+    SITE = "site"
+    ALERT = "alert"
+
+
+class CollectionMode(StrEnum):
+    """Mode de collecte ayant produit la mesure.
+
+    Distingue le flux temps reel du rattrapage historique, ce qui permet a l'aval de
+    traiter differemment un rejeu massif et une mesure fraiche.
+    """
+
+    REALTIME = "realtime"
+    BATCH = "batch"
+
+
+class SiteScopedPayload(BaseModel):
+    """Base des payloads rattaches a un site.
+
+    Garantit la presence de site_id, qui sert de cle de partition Kafka et donc
+    d'assurance d'ordre chronologique par site.
+
+    Attributes:
+        site_id: Identifiant metier du site concerne.
+    """
+
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    site_id: str
+
+
+class TimestampedPayload(SiteScopedPayload):
+    """Base des payloads portant un horodatage de mesure.
+
+    Attributes:
+        timestamp: Instant de la mesure, situe et exprime en UTC.
+    """
+
+    timestamp: datetime
+
+    @field_validator("timestamp")
+    @classmethod
+    def require_utc(cls, measured_at: datetime) -> datetime:
+        """Refuse un horodatage naif et ramene les autres a UTC.
+
+        Args:
+            measured_at: Horodatage a controler.
+
+        Returns:
+            Le meme instant exprime en UTC.
+
+        Raises:
+            ValueError: Si l'horodatage ne porte aucun fuseau.
+        """
+        if measured_at.tzinfo is None:
+            raise ValueError(
+                "a published timestamp must carry a timezone, normalize it to UTC first"
+            )
+        return measured_at.astimezone(UTC)
+
+
+class MeasureRawPayload(TimestampedPayload):
+    """Mesure brute, image fidele de la reponse de l'API. Alimente MEASURE_RAW."""
+
+    consumption_kw: Optional[float] = None
+    consumption_kwh: Optional[float] = None
+    voltage_v: Optional[float] = None
+    current_a: Optional[float] = None
+    power_factor: Optional[float] = None
+    temperature_celsius: Optional[float] = None
+    humidity_percent: Optional[float] = None
+    null_reasons: list[str] = Field(default_factory=list)
+    data_quality: str
+
+
+class MeasureImputedPayload(TimestampedPayload):
+    """Mesure reconstruite. Alimente MEASURE_IMPUTED.
+
+    Ne porte aucun identifiant technique : measure_raw_id est un UUID genere a
+    l'insertion par le consumer, que le collecteur ne peut pas connaitre. La correlation
+    avec la mesure brute se fait sur la cle metier (site_id, timestamp).
+    """
+
+    consumption_kw: Optional[float] = None
+    consumption_kwh: Optional[float] = None
+    voltage_v: Optional[float] = None
+    current_a: Optional[float] = None
+    power_factor: Optional[float] = None
+    temperature_celsius: Optional[float] = None
+    humidity_percent: Optional[float] = None
+    imputation_method: ImputationMethod
+
+
+class SitePayload(SiteScopedPayload):
+    """Referentiel d'un site. Alimente SITE.
+
+    Publie sur un topic a politique de compaction : le journal decrit un etat courant
+    et non une suite d'evenements, seul le dernier message par site est conserve.
+    """
+
+    site_type: str
+    site_name: str
+    location: str
+    capacity_kw: float
+    status: str
+
+
+class MessageEnvelope[PayloadT: SiteScopedPayload](BaseModel):
+    """Message publie sur le bus, quelle que soit sa nature.
+
+    Attributes:
+        schema_version: Version du contrat ayant produit ce message.
+        event_type: Nature du message, donc table de destination.
+        produced_at: Instant de production, distinct de l'instant de mesure.
+        collection_mode: Mode de collecte, absent pour les messages de referentiel.
+        payload: Contenu, dont la forme depend de event_type.
+    """
+
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    schema_version: str = SCHEMA_VERSION
+    event_type: EventType
+    produced_at: datetime
+    collection_mode: Optional[CollectionMode] = None
+    payload: PayloadT
+
+    @property
+    def partition_key(self) -> str:
+        """Cle de partition du message.
+
+        Returns:
+            L'identifiant du site, afin que toutes les mesures d'un meme site
+            atterrissent dans la meme partition et y restent ordonnees.
+        """
+        return self.payload.site_id
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def envelope_for_raw_reading(
+    reading: EnergyReading,
+    collection_mode: CollectionMode,
+) -> MessageEnvelope[MeasureRawPayload]:
+    """Emballe une mesure brute pour publication.
+
+    Args:
+        reading: Releve normalise, dont l'horodatage porte deja son fuseau.
+        collection_mode: Mode de collecte ayant produit ce releve.
+
+    Returns:
+        Le message pret a serialiser.
+
+    Raises:
+        ValidationError: Si l'horodatage du releve est naif.
+    """
+    return MessageEnvelope[MeasureRawPayload](
+        event_type=EventType.MEASURE_RAW,
+        produced_at=_now(),
+        collection_mode=collection_mode,
+        payload=MeasureRawPayload(
+            site_id=reading.site_id,
+            timestamp=reading.timestamp,
+            consumption_kw=reading.consumption_kw,
+            consumption_kwh=reading.consumption_kwh,
+            voltage_v=reading.voltage_v,
+            current_a=reading.current_a,
+            power_factor=reading.power_factor,
+            temperature_celsius=reading.temperature_celsius,
+            humidity_percent=reading.humidity_percent,
+            null_reasons=list(reading.null_reasons),
+            data_quality=reading.data_quality,
+        ),
+    )
+
+
+def envelope_for_imputed_reading(
+    reading: ImputedReading,
+    collection_mode: CollectionMode,
+) -> MessageEnvelope[MeasureImputedPayload]:
+    """Emballe une mesure reconstruite pour publication.
+
+    Args:
+        reading: Mesure imputee, dont l'horodatage porte deja son fuseau.
+        collection_mode: Mode de collecte ayant produit la mesure d'origine.
+
+    Returns:
+        Le message pret a serialiser.
+
+    Raises:
+        ValidationError: Si l'horodatage de la mesure est naif.
+    """
+    return MessageEnvelope[MeasureImputedPayload](
+        event_type=EventType.MEASURE_IMPUTED,
+        produced_at=_now(),
+        collection_mode=collection_mode,
+        payload=MeasureImputedPayload(
+            site_id=reading.site_id,
+            timestamp=reading.timestamp,
+            consumption_kw=reading.consumption_kw,
+            consumption_kwh=reading.consumption_kwh,
+            voltage_v=reading.voltage_v,
+            current_a=reading.current_a,
+            power_factor=reading.power_factor,
+            temperature_celsius=reading.temperature_celsius,
+            humidity_percent=reading.humidity_percent,
+            imputation_method=reading.imputation_method,
+        ),
+    )
+
+
+def envelope_for_site(site: Site) -> MessageEnvelope[SitePayload]:
+    """Emballe un enregistrement de referentiel pour publication.
+
+    Args:
+        site: Site issu du referentiel de l'API.
+
+    Returns:
+        Le message pret a serialiser. Aucun mode de collecte n'est declare : un
+        referentiel n'est pas une mesure.
+    """
+    return MessageEnvelope[SitePayload](
+        event_type=EventType.SITE,
+        produced_at=_now(),
+        payload=SitePayload(
+            site_id=site.site_id,
+            site_type=site.site_type,
+            site_name=site.site_name,
+            location=site.location,
+            capacity_kw=site.capacity_kw,
+            status=site.status,
+        ),
+    )
