@@ -24,6 +24,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "types-requests>=2.32",
+    "pdoc>=15.0",
 ]
 
 [build-system]
@@ -42,12 +43,18 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "B", "ANN", "RUF"]
+select = ["E", "F", "I", "N", "UP", "B", "ANN", "RUF", "D"]
 # Les regles de codage du projet imposent Optional[X] plutot que la forme X | None.
-ignore = ["UP007", "UP045"]
+# D107 : le contrat du constructeur est decrit dans la docstring de la classe.
+ignore = ["UP007", "UP045", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN"]
+# Les tests se documentent par leur nom, pas par une docstring.
+"tests/*" = ["ANN", "D"]
+"scripts/*" = ["D103"]
 
 [tool.mypy]
 strict = true

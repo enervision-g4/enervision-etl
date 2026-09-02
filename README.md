@@ -70,6 +70,30 @@ uv run ruff check src tests scripts
 uv run mypy                # typage strict sur src
 ```
 
+## Documentation du code
+
+Chaque module, classe et fonction publique porte une docstring au format Google,
+decrivant ses arguments, sa valeur de retour et les exceptions qu'elle leve. Le
+respect de cette regle est verifie par ruff, via les controles pydocstyle.
+
+Consultation en console :
+
+```bash
+uv run python -c "from enervision_etl.transform import normalization; help(normalization)"
+```
+
+Generation d'un site HTML navigable dans `build/docs`, non versionne :
+
+```bash
+uv run pdoc --output-directory build/docs enervision_etl
+```
+
+Ou en serveur local avec rechargement automatique :
+
+```bash
+uv run pdoc enervision_etl
+```
+
 ## Sonde de conformite de l'API
 
 La documentation de l'API Mock decrit la version 1.1.0. Avant de developper
