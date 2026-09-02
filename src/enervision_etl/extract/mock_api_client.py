@@ -52,10 +52,12 @@ class MockApiClient:
         return bool(health_report.get("status") == "healthy")
 
     def fetch_site_registry(self) -> list[Site]:
-        """Recupere le referentiel complet des sites.
+        """Recupere le referentiel, c'est a dire la liste complete du parc.
 
         Returns:
-            Les sites exposes par l'API, avec leur capacite et leur type.
+            Tous les sites exposes par l'API, avec leur type, leur puissance installee
+            et leur statut. Alimente la table SITE et conditionne le calcul du taux de
+            charge ainsi que le choix de la strategie d'imputation.
 
         Raises:
             MockApiUnavailableError: Si l'API reste injoignable.

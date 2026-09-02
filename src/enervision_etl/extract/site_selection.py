@@ -1,5 +1,8 @@
 """Determination des sites reellement collectes.
 
+Croise deux sources : le referentiel, c'est a dire la liste du parc renvoyee par
+GET /api/v1/sites, et la restriction eventuellement posee en configuration.
+
 La liste des sites vit dans l'API, pas dans la configuration. Enumerer chaque site
 dans une variable d'environnement dupliquerait cette information et deviendrait
 ingerable au dela de quelques dizaines de sites. La configuration ne sert donc qu'a
@@ -40,7 +43,7 @@ def resolve_site_identifiers(
     Args:
         configured_sites: Restriction demandee en configuration. Une liste vide
             demande la collecte de tout le parc.
-        site_registry: Referentiel renvoye par l'API mock.
+        site_registry: Liste des sites renvoyee par l'API mock.
 
     Returns:
         Les identifiants a collecter, dans l'ordre du referentiel afin que la

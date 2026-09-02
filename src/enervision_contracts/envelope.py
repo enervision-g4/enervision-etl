@@ -129,7 +129,7 @@ class MeasureImputedPayload(TimestampedPayload):
 
 
 class SitePayload(SiteScopedPayload):
-    """Referentiel d'un site. Alimente SITE.
+    """Caracteristiques fixes d'un site. Alimente la table SITE.
 
     Publie sur un topic a politique de compaction : le journal decrit un etat courant
     et non une suite d'evenements, seul le dernier message par site est conserve.
@@ -149,7 +149,7 @@ class MessageEnvelope[PayloadT: SiteScopedPayload](BaseModel):
         schema_version: Version du contrat ayant produit ce message.
         event_type: Nature du message, donc table de destination.
         produced_at: Instant de production, distinct de l'instant de mesure.
-        collection_mode: Mode de collecte, absent pour les messages de referentiel.
+        collection_mode: Mode de collecte, absent pour les fiches de site.
         payload: Contenu, dont la forme depend de event_type.
     """
 
@@ -248,14 +248,14 @@ def envelope_for_imputed_reading(
 
 
 def envelope_for_site(site: Site) -> MessageEnvelope[SitePayload]:
-    """Emballe un enregistrement de referentiel pour publication.
+    """Emballe les caracteristiques d'un site pour publication.
 
     Args:
-        site: Site issu du referentiel de l'API.
+        site: Site issu de la liste renvoyee par l'API.
 
     Returns:
-        Le message pret a serialiser. Aucun mode de collecte n'est declare : un
-        referentiel n'est pas une mesure.
+        Le message pret a serialiser. Aucun mode de collecte n'est declare : une
+        fiche de site n'est pas une mesure.
     """
     return MessageEnvelope[SitePayload](
         event_type=EventType.SITE,
