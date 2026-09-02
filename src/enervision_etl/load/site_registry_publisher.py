@@ -1,23 +1,9 @@
-"""Publication du referentiel des sites, c'est a dire de la liste du parc.
+"""Publication de la liste des sites, qui alimente la table SITE.
 
-Le referentiel rassemble les caracteristiques fixes de chaque site, telles que renvoyees
-par GET /api/v1/sites : type, nom, localisation, puissance installee, statut. Il alimente
-la table SITE, vers laquelle pointe la cle etrangere de chaque mesure.
-
-Ce n'est pas un flux d'evenements mais un etat courant : une poignee de sites qui
-changent au mieux une fois par an. Le republier a chaque cycle du collecteur saturerait
-le topic pour rien.
-
-Deux mecanismes complementaires evitent ce gaspillage. Cote broker, le topic est cree
-avec une politique de compaction : seul le dernier message par cle est conserve, donc
-le journal reste de la taille du parc quel que soit le nombre de republications. Cette
-propriete appartient au topic, pas au producteur ; elle doit etre appliquee a sa
-creation. Cote collecteur, ce module ne publie que ce qui a reellement change, ce qui
-ramene le trafic a zero en regime stable.
-
-La compaction apporte un benefice supplementaire : un consumer qui demarre a vide peut
-relire le topic depuis le debut et reconstituer l'etat complet du parc, sans dependre
-du moment ou le collecteur republiera.
+Un etat courant, pas un flux : quelques sites qui changent au mieux une fois par an.
+Deux mecanismes evitent de saturer le topic. Cote broker, la compaction ne conserve que
+le dernier message par cle, propriete a appliquer a la creation du topic. Cote
+collecteur, ce module ne publie que ce qui a change.
 """
 
 from collections.abc import Callable
@@ -37,10 +23,9 @@ def _utc_now() -> datetime:
 
 
 class SiteRegistryPublisher:
-    """Diffuse la liste des sites en n'emettant que ce qui a change depuis la veille.
+    """Diffuse la liste des sites en n'emettant que ce qui a change.
 
-    Conserve en memoire la derniere version publiee de chaque site, et compare le
-    referentiel entrant a cette photo pour n'emettre que les differences.
+    Conserve en memoire la derniere version publiee de chaque site.
     """
 
     def __init__(
@@ -50,16 +35,16 @@ class SiteRegistryPublisher:
         refresh_interval_seconds: float = DEFAULT_REFRESH_INTERVAL_SECONDS,
         clock: Optional[Callable[[], datetime]] = None,
     ) -> None:
-        """Prepare la diffusion du referentiel.
+        """Prepare la diffusion.
 
         Args:
             publisher: Destination des messages.
             topic: Topic de la table SITE, a politique de compaction.
-            refresh_interval_seconds: Delai entre deux verifications de la liste des sites.
+            refresh_interval_seconds: Delai entre deux verifications de la liste.
             clock: Source de temps, injectee par les tests.
 
         Raises:
-            ValueError: Si l'intervalle de rafraichissement n'est pas strictement positif.
+            ValueError: Si l'intervalle n'est pas strictement positif.
         """
         if refresh_interval_seconds <= 0:
             raise ValueError(
@@ -78,8 +63,7 @@ class SiteRegistryPublisher:
         """Indique s'il est temps de redemander la liste des sites a l'API.
 
         Returns:
-            True tant qu'aucune diffusion n'a eu lieu, puis a chaque fois que
-            l'intervalle configure s'est ecoule depuis la derniere.
+            True avant toute diffusion, puis a chaque intervalle ecoule.
         """
         if self._last_refreshed_at is None:
             return True
@@ -90,17 +74,15 @@ class SiteRegistryPublisher:
     def publish_changes(self, site_registry: list[Site]) -> list[str]:
         """Diffuse les sites nouveaux ou modifies, et eux seuls.
 
-        Un site absent du referentiel n'est pas annule : le supprimer demanderait
-        d'emettre un message a valeur nulle, que le contrat de publication ne prevoit
-        pas. Un site mis hors service change de statut plutot que de disparaitre, cas
-        qui est bien detecte. Un site disparu puis reapparu est simplement rediffuse.
+        Un site disparu n'est pas annule, faute de message a valeur nulle dans le
+        contrat. Le cas reel, une mise hors service, se traduit par un changement de
+        statut, bien detecte.
 
         Args:
-            site_registry: Referentiel complet tel que renvoye par l'API.
+            site_registry: Liste complete telle que renvoyee par l'API.
 
         Returns:
-            Les identifiants des sites effectivement diffuses, dans l'ordre du
-            referentiel.
+            Les identifiants diffuses, dans l'ordre de la liste.
         """
         current_payloads = {
             site.site_id: envelope_for_site(site).payload for site in site_registry

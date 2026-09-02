@@ -1,8 +1,7 @@
-"""Configuration du pipeline, lue dans l'environnement et validee au demarrage.
+"""Configuration lue dans l'environnement et validee au demarrage.
 
-Aucune adresse n'est codee en dur. Une configuration incomplete fait echouer le
-demarrage immediatement, avec un message explicite, plutot qu'au bout de
-plusieurs minutes de fonctionnement sur une valeur absente.
+Aucune adresse en dur, et une configuration incomplete fait echouer le demarrage
+immediatement plutot qu'apres plusieurs minutes de fonctionnement.
 """
 
 from typing import Annotated
@@ -77,7 +76,7 @@ class EtlSettings(BaseSettings):
             configured_url: Valeur brute lue dans l'environnement.
 
         Returns:
-            L'URL sans barre oblique finale, evitant les doubles barres a la concatenation.
+            L'URL sans barre oblique finale.
 
         Raises:
             ValueError: Si l'URL ne commence pas par http:// ou https://.
@@ -93,14 +92,13 @@ class EtlSettings(BaseSettings):
     @field_validator("sites", mode="before")
     @classmethod
     def split_site_identifiers(cls, configured_sites: object) -> list[str]:
-        """Decoupe la liste des sites fournie sous forme de chaine separee par des virgules.
+        """Decoupe la liste des sites separee par des virgules.
 
         Args:
-            configured_sites: Valeur brute, chaine separee par des virgules ou
-                liste deja construite.
+            configured_sites: Chaine separee par des virgules, ou liste construite.
 
         Returns:
-            Les identifiants de site, debarrasses des espaces et des entrees vides.
+            Les identifiants, sans espaces ni entrees vides.
 
         Raises:
             TypeError: Si la valeur n'est ni une chaine ni une liste.
@@ -122,11 +120,8 @@ class EtlSettings(BaseSettings):
     def normalize_wildcard(cls, site_identifiers: list[str]) -> list[str]:
         """Ramene la demande de collecte totale a une liste vide.
 
-        Enumerer les sites dans l'environnement dupliquerait une information que
-        l'API expose deja, et deviendrait ingerable sur un parc de plusieurs centaines
-        de sites. Une liste vide signifie donc tout le parc, le filtrage explicite
-        restant possible pour restreindre un environnement de developpement ou pour
-        repartir la collecte entre plusieurs instances.
+        Enumerer les sites dupliquerait ce que l'API expose deja. Une liste vide
+        signifie tout le parc, le filtrage explicite restant possible.
 
         Args:
             site_identifiers: Identifiants deja decoupes.

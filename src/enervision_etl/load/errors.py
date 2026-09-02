@@ -2,11 +2,9 @@
 
 
 class MessagePublicationError(Exception):
-    """Un message n'a pas pu etre remis au bus.
+    """Un message n'a pas pu etre mis en file, la saturation persistant apres vidage.
 
-    Levee lorsque la file locale du producer reste saturee malgre une tentative de
-    vidage. Echouer bruyamment est preferable a un message perdu en silence : l'appelant
-    peut alors ralentir, alerter, ou interrompre la collecte.
+    Echouer bruyamment vaut mieux qu'un message perdu en silence.
 
     Attributes:
         topic: Topic de destination du message refuse.

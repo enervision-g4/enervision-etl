@@ -1,8 +1,7 @@
-"""Contrat des mesures energetiques, renvoyees par /current et /readings.
+"""Mesures energetiques renvoyees par /current et /readings.
 
-Ce module porte la regle directrice du projet : une valeur nulle n'est jamais
-detruite. Tous les champs capteur sont donc optionnels, aucune coercition vers
-zero n'est appliquee, et les metadonnees de qualite accompagnent la mesure.
+Une valeur nulle n'est jamais detruite : tous les champs capteur sont optionnels et
+accompagnes de leurs metadonnees de qualite.
 """
 
 from datetime import datetime
@@ -28,25 +27,14 @@ KNOWN_DATA_QUALITY_LEVELS: Final[frozenset[str]] = frozenset(
 
 
 class EnergyReading(BaseModel):
-    """Releve energetique d'un site a un instant donne.
+    """Releve brut d'un site a un instant donne, valeurs nulles comprises.
 
-    Image fidele de la reponse de l'API mock, y compris ses valeurs nulles. Aucun
-    nettoyage n'est applique a ce stade : cet objet alimente MEASURE_RAW, qui est
-    un journal immuable servant a l'audit de fiabilite des capteurs.
+    Alimente MEASURE_RAW, journal immuable servant a l'audit des capteurs.
 
     Attributes:
-        timestamp: Horodatage de la mesure, naif tel que renvoye par l'API.
-        site_id: Identifiant metier du site mesure.
-        site_type: Type de site, denormalisation de l'API non republiee vers Kafka.
-        consumption_kw: Puissance instantanee, ou None si le compteur est muet.
-        consumption_kwh: Energie sur la periode, ou None.
-        voltage_v: Tension triphasee, ou None.
-        current_a: Intensite, ou None.
-        power_factor: Facteur de puissance, ou None.
-        temperature_celsius: Temperature exterieure, ou None.
-        humidity_percent: Humidite relative, ou None.
+        timestamp: Horodatage naif, tel que renvoye par l'API.
+        site_type: Denormalisation de l'API, non republiee vers Kafka.
         null_reasons: Causes des valeurs manquantes, liste non fermee.
-        data_quality: Niveau de qualite declare par l'API.
     """
 
     # extra="allow" : un champ inconnu ajoute par une future version de l'API est conserve
@@ -73,8 +61,8 @@ class EnergyReading(BaseModel):
         """Liste les champs de mesure absents de ce releve.
 
         Returns:
-            Les noms des champs valant None, dans l'ordre de MEASUREMENT_FIELD_NAMES.
-            Un tuple vide signifie que tous les capteurs ont repondu.
+            Les noms des champs valant None. Un tuple vide signifie qu'aucun
+            capteur n'est muet.
         """
         return tuple(
             field_name
@@ -83,12 +71,9 @@ class EnergyReading(BaseModel):
         )
 
     def has_known_data_quality(self) -> bool:
-        """Indique si le niveau de qualite fait partie des valeurs documentees.
+        """Indique si le niveau de qualite fait partie des valeurs connues.
 
-        Cette liste n'est pas fermee. L'instance reelle emet par exemple la cause
-        humidity_sensor_failure, absente du contrat initial. Signaler une valeur inedite
-        en supervision, sans jamais rejeter la mesure, evite qu'une evolution de l'API
-        interrompe la collecte.
+        Permet de signaler une valeur inedite en supervision sans rejeter la mesure.
 
         Returns:
             True si data_quality appartient a KNOWN_DATA_QUALITY_LEVELS.

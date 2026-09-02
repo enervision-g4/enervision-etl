@@ -1,9 +1,7 @@
 """Client HTTP resilient pour l'API mock.
 
-Apporte aux appels ce qu'un simple requests.get ne couvre pas :
-session reutilisee, delai d'attente explicite sur chaque requete,
-rejeu exponentiel limite aux pannes transitoires, et traduction des codes
-HTTP en exceptions metier distinctes.
+Session reutilisee, delai d'attente explicite sur chaque requete, rejeu limite aux
+pannes transitoires, et traduction des codes HTTP en exceptions metier distinctes.
 """
 
 from types import TracebackType
@@ -33,12 +31,11 @@ def build_http_session(
 ) -> requests.Session:
     """Construit une session HTTP dotee d'une politique de rejeu.
 
-    La session est reutilisee entre les appels, ce qui maintient la connexion
-    ouverte et evite une poignee de main TCP par mesure collectee.
+    La session est reutilisee, ce qui evite une poignee de main TCP par mesure.
 
     Args:
         total_retries: Nombre maximal de tentatives supplementaires par requete.
-        backoff_factor: Facteur de la temporisation exponentielle entre deux rejeux.
+        backoff_factor: Facteur de la temporisation exponentielle.
 
     Returns:
         Une session montee sur les schemas http et https.
@@ -75,10 +72,9 @@ class ResilientHttpClient:
         """Prepare le client pour une instance donnee de l'API mock.
 
         Args:
-            base_url: Racine de l'API, sans barre oblique finale significative.
+            base_url: Racine de l'API.
             timeout_seconds: Delai d'attente applique a chaque requete.
-            session: Session a reutiliser, utile pour les tests. Une session
-                dotee de la politique de rejeu est creee si elle est omise.
+            session: Session a reutiliser, creee par defaut si omise.
             total_retries: Nombre maximal de tentatives supplementaires.
             backoff_factor: Facteur de la temporisation exponentielle.
         """
@@ -97,17 +93,15 @@ class ResilientHttpClient:
     ) -> Any:  # noqa: ANN401
         """Appelle un endpoint en GET et renvoie son corps JSON deserialise.
 
-        Une reponse 200 contenant des valeurs nulles est une reponse valide : elle
-        est renvoyee telle quelle, jamais filtree.
+        Une reponse 200 contenant des valeurs nulles est valide et n'est jamais filtree.
 
         Args:
             endpoint: Chemin de l'endpoint, commencant par une barre oblique.
             query_parameters: Parametres de requete, facultatifs.
-            site_id: Site concerne, utilise pour qualifier une erreur 404.
+            site_id: Site concerne, pour qualifier une erreur 404.
 
         Returns:
-            Le corps de la reponse, structurellement dynamique. Le typage fort est
-            applique juste apres par les modeles du module contracts.
+            Le corps de la reponse. Le typage fort est applique ensuite par contracts.
 
         Raises:
             SiteNotFoundError: Si l'API repond 404.
@@ -150,7 +144,7 @@ class ResilientHttpClient:
         """Ferme la session a la sortie du bloc de contexte.
 
         Args:
-            exception_type: Type de l'exception ayant interrompu le bloc, si elle existe.
+            exception_type: Type de l'exception ayant interrompu le bloc.
             exception_value: Instance de cette exception.
             exception_traceback: Pile d'appels associee.
         """

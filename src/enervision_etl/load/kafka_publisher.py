@@ -1,21 +1,9 @@
-"""Publication vers un broker Kafka.
+"""Implementation Kafka du protocole de publication. Le broker est declare ailleurs.
 
-Le broker lui meme est de l'infrastructure, declaree ailleurs. Ce module ne contient
-que le client producteur, c'est a dire l'implementation Kafka du protocole de
-publication.
-
-Trois comportements du client confluent_kafka structurent ce code, et les ignorer
-conduit a des pertes silencieuses.
-
-La publication est asynchrone : produce met en file, il ne remet pas. Les callbacks de
-livraison ne s'executent qu'a l'appel de poll ou de flush, sans quoi les echecs
-n'atteignent jamais l'application.
-
-La file locale a une capacite finie : produce leve BufferError quand elle est pleine.
-Ignorer cette exception revient a jeter le message.
-
-Enfin, tout ce qui reste en file a l'arret du processus est perdu. Le vidage explicite
-a la fermeture n'est pas une precaution, c'est une obligation.
+Trois comportements du client confluent_kafka structurent ce code, et les ignorer perd
+des messages en silence. La publication est asynchrone, les callbacks de livraison ne
+s'executant qu'a l'appel de poll ou flush. La file locale est finie, produce levant
+BufferError quand elle est pleine. Et ce qui y reste a l'arret du processus est perdu.
 """
 
 from collections.abc import Callable
@@ -68,9 +56,8 @@ class ProducerLike(Protocol):
 def build_producer_configuration(bootstrap_servers: str) -> dict[str, Any]:
     """Assemble la configuration du producer.
 
-    L'idempotence est activee : sans elle, un rejeu declenche par une coupure reseau
-    republie le message et cree un doublon. Elle implique acks=all, qui est declare
-    explicitement pour que l'intention reste lisible.
+    L'idempotence evite qu'un rejeu reseau cree un doublon. Elle implique acks=all,
+    declare explicitement pour que l'intention reste lisible.
 
     Args:
         bootstrap_servers: Liste des brokers, separes par des virgules.
@@ -115,7 +102,7 @@ class KafkaPublisher:
 
     @staticmethod
     def _build_default_producer(bootstrap_servers: Optional[str]) -> ProducerLike:
-        """Construit un producer confluent_kafka a partir de la configuration.
+        """Construit un producer confluent_kafka.
 
         Args:
             bootstrap_servers: Liste des brokers, separes par des virgules.
@@ -150,8 +137,7 @@ class KafkaPublisher:
 
         Args:
             topic: Nom du topic de destination.
-            envelope: Message a publier. Sa cle de partition determine la partition,
-                donc l'ordre chronologique des mesures d'un meme site.
+            envelope: Message a publier.
 
         Raises:
             MessagePublicationError: Si la file locale reste saturee apres un vidage.
@@ -204,7 +190,7 @@ class KafkaPublisher:
         """Vide la file a la sortie du bloc de contexte.
 
         Args:
-            exception_type: Type de l'exception ayant interrompu le bloc, si elle existe.
+            exception_type: Type de l'exception ayant interrompu le bloc.
             exception_value: Instance de cette exception.
             exception_traceback: Pile d'appels associee.
         """
@@ -219,10 +205,7 @@ class KafkaPublisher:
         )
 
     def _record_delivery(self, error: Optional[object], message: DeliveredMessage) -> None:
-        """Enregistre l'issue d'une remise.
-
-        Sans ce callback, un echec de remise resterait invisible : le producer ne leve
-        aucune exception au moment du produce, la publication etant asynchrone.
+        """Enregistre l'issue d'une remise, sans quoi un echec resterait invisible.
 
         Args:
             error: Erreur de remise, ou None en cas de succes.

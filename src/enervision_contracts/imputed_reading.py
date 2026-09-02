@@ -10,9 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ImputationMethod(StrEnum):
     """Strategies de reconstruction, nommees selon les termes usuels du domaine.
 
-    La valeur portee par une ligne decrit ce qui lui a reellement ete applique.
-    NONE signale une mesure laissee telle quelle, soit parce qu'elle etait complete,
-    soit parce que le trou etait trop long ou depourvu de point d'ancrage.
+    NONE signale une mesure laissee telle quelle : complete, ou bien irrecuperable.
     """
 
     LINEAR_INTERPOLATION = "linear_interpolation"
@@ -23,26 +21,12 @@ class ImputationMethod(StrEnum):
 
 
 class ImputedReading(BaseModel):
-    """Mesure reconstruite correspondant a un releve brut.
+    """Mesure reconstruite, publiee dans un flux distinct de la mesure brute.
 
-    Cet objet ne remplace jamais le releve brut : il vit dans un flux distinct et
-    declare la methode qui lui a ete appliquee, afin que toute valeur synthetique
-    reste identifiable comme telle.
-
-    La correlation avec MEASURE_RAW se fait sur la cle metier (site_id, timestamp).
-    L'identifiant technique measure_raw_id est un UUID genere a l'insertion par le
-    consumer de persistance, que ce service ne peut pas connaitre.
+    Ne porte aucun identifiant technique : measure_raw_id est un UUID genere a
+    l'insertion par le consumer. La correlation passe par (site_id, timestamp).
 
     Attributes:
-        site_id: Identifiant metier du site mesure.
-        timestamp: Horodatage du releve brut d'origine, inchange.
-        consumption_kw: Puissance, mesuree ou reconstruite, ou None si irrecuperable.
-        consumption_kwh: Energie, mesuree ou reconstruite, ou None.
-        voltage_v: Tension, mesuree ou reconstruite, ou None.
-        current_a: Intensite, mesuree ou reconstruite, ou None.
-        power_factor: Facteur de puissance, mesure ou reconstruit, ou None.
-        temperature_celsius: Temperature, mesuree ou reconstruite, ou None.
-        humidity_percent: Humidite, mesuree ou reconstruite, ou None.
         imputation_method: Strategie appliquee a cette ligne.
         imputed_fields: Champs effectivement reconstruits, pour la supervision.
     """

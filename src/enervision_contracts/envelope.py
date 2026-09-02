@@ -1,20 +1,8 @@
-"""Enveloppe des messages echanges entre le collecteur et les consumers.
+"""Contrat d'interface : enveloppe des messages entre le collecteur et les consumers.
 
-Ce module est le contrat d'interface de la chaine. Il est lu et ecrit par les deux
-extremites, et toute modification incompatible casse la chaine des deux cotes a la fois.
-
-Trois regles le gouvernent.
-
-Le payload epouse strictement les colonnes du modele de donnees. Aucun champ derive ni
-denormalise n'y figure : ce qui se recalcule par jointure n'a pas a transiter.
-
-Un champ inconnu est tolere a la lecture. Pendant un deploiement, un consumer peut lire
-des messages produits par une version plus recente ; rejeter le message couperait la
-chaine pour un champ qu'il aurait suffi d'ignorer. Corollaire : seules les evolutions
-additives sont sures, et schema_version doit accompagner toute rupture.
-
-Les horodatages sont situes et exprimes en UTC. Un horodatage naif oblige le consumer
-a deviner un fuseau, et la donnee se decale silencieusement.
+Trois regles. Le payload epouse strictement les colonnes du modele de donnees. Un champ
+inconnu est tolere a la lecture, donc seules les evolutions additives sont sures et
+schema_version doit accompagner toute rupture. Les horodatages sont situes, en UTC.
 """
 
 from datetime import UTC, datetime
@@ -41,11 +29,7 @@ class EventType(StrEnum):
 
 
 class CollectionMode(StrEnum):
-    """Mode de collecte ayant produit la mesure.
-
-    Distingue le flux temps reel du rattrapage historique, ce qui permet a l'aval de
-    traiter differemment un rejeu massif et une mesure fraiche.
-    """
+    """Mode de collecte, qui distingue le flux temps reel du rattrapage historique."""
 
     REALTIME = "realtime"
     BATCH = "batch"
@@ -54,11 +38,7 @@ class CollectionMode(StrEnum):
 class SiteScopedPayload(BaseModel):
     """Base des payloads rattaches a un site.
 
-    Garantit la presence de site_id, qui sert de cle de partition Kafka et donc
-    d'assurance d'ordre chronologique par site.
-
-    Attributes:
-        site_id: Identifiant metier du site concerne.
+    site_id sert de cle de partition, donc d'assurance d'ordre chronologique par site.
     """
 
     model_config = ConfigDict(extra="allow", frozen=True)
@@ -67,11 +47,7 @@ class SiteScopedPayload(BaseModel):
 
 
 class TimestampedPayload(SiteScopedPayload):
-    """Base des payloads portant un horodatage de mesure.
-
-    Attributes:
-        timestamp: Instant de la mesure, situe et exprime en UTC.
-    """
+    """Base des payloads portant un horodatage de mesure, situe et exprime en UTC."""
 
     timestamp: datetime
 
@@ -113,9 +89,8 @@ class MeasureRawPayload(TimestampedPayload):
 class MeasureImputedPayload(TimestampedPayload):
     """Mesure reconstruite. Alimente MEASURE_IMPUTED.
 
-    Ne porte aucun identifiant technique : measure_raw_id est un UUID genere a
-    l'insertion par le consumer, que le collecteur ne peut pas connaitre. La correlation
-    avec la mesure brute se fait sur la cle metier (site_id, timestamp).
+    Correlation avec la mesure brute par (site_id, timestamp), measure_raw_id etant
+    genere a l'insertion par le consumer.
     """
 
     consumption_kw: Optional[float] = None
@@ -129,11 +104,7 @@ class MeasureImputedPayload(TimestampedPayload):
 
 
 class SitePayload(SiteScopedPayload):
-    """Caracteristiques fixes d'un site. Alimente la table SITE.
-
-    Publie sur un topic a politique de compaction : le journal decrit un etat courant
-    et non une suite d'evenements, seul le dernier message par site est conserve.
-    """
+    """Caracteristiques fixes d'un site. Alimente SITE, sur un topic compacte."""
 
     site_type: str
     site_name: str
@@ -146,11 +117,8 @@ class MessageEnvelope[PayloadT: SiteScopedPayload](BaseModel):
     """Message publie sur le bus, quelle que soit sa nature.
 
     Attributes:
-        schema_version: Version du contrat ayant produit ce message.
-        event_type: Nature du message, donc table de destination.
         produced_at: Instant de production, distinct de l'instant de mesure.
-        collection_mode: Mode de collecte, absent pour les fiches de site.
-        payload: Contenu, dont la forme depend de event_type.
+        collection_mode: Absent pour les fiches de site.
     """
 
     model_config = ConfigDict(extra="allow", frozen=True)
@@ -163,11 +131,10 @@ class MessageEnvelope[PayloadT: SiteScopedPayload](BaseModel):
 
     @property
     def partition_key(self) -> str:
-        """Cle de partition du message.
+        """Cle de partition : l'identifiant du site, qui garantit l'ordre par site.
 
         Returns:
-            L'identifiant du site, afin que toutes les mesures d'un meme site
-            atterrissent dans la meme partition et y restent ordonnees.
+            L'identifiant du site porte par le payload.
         """
         return self.payload.site_id
 
@@ -254,8 +221,7 @@ def envelope_for_site(site: Site) -> MessageEnvelope[SitePayload]:
         site: Site issu de la liste renvoyee par l'API.
 
     Returns:
-        Le message pret a serialiser. Aucun mode de collecte n'est declare : une
-        fiche de site n'est pas une mesure.
+        Le message pret a serialiser, sans mode de collecte.
     """
     return MessageEnvelope[SitePayload](
         event_type=EventType.SITE,

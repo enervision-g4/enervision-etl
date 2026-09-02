@@ -1,9 +1,7 @@
 """Publication sur un flux texte, une ligne JSON par message.
 
-Destination de developpement et de demonstration. Elle reproduit fidelement ce que
-Kafka transporte, a savoir un topic, une cle de partition et une valeur, ce qui permet
-deux choses : faire tourner la chaine complete sans broker, et rediriger la sortie dans
-un fichier qui servira de jeu d'essai realiste aux consumers.
+Reproduit ce que Kafka transporte, topic, cle et valeur. Redirigee dans un fichier,
+sa sortie sert de jeu d'essai realiste aux consumers.
 """
 
 import json
@@ -24,8 +22,7 @@ class StdoutPublisher:
         """Prepare la destination.
 
         Args:
-            stream: Flux d'ecriture. La sortie standard par defaut. Le flux n'est
-                jamais ferme par cette classe, qui ne le possede pas.
+            stream: Flux d'ecriture, la sortie standard par defaut. Jamais ferme ici.
         """
         self._stream = stream if stream is not None else sys.stdout
         self._published_counts: Counter[str] = Counter()
@@ -57,7 +54,7 @@ class StdoutPublisher:
             timeout_seconds: Ignore, l'ecriture etant synchrone.
 
         Returns:
-            Toujours zero : aucun message ne peut rester en attente.
+            Toujours zero.
         """
         self._stream.flush()
         return 0
@@ -79,7 +76,7 @@ class StdoutPublisher:
         """Vide le tampon a la sortie du bloc de contexte.
 
         Args:
-            exception_type: Type de l'exception ayant interrompu le bloc, si elle existe.
+            exception_type: Type de l'exception ayant interrompu le bloc.
             exception_value: Instance de cette exception.
             exception_traceback: Pile d'appels associee.
         """

@@ -1,21 +1,11 @@
 """Reconstruction des valeurs manquantes d'une serie de mesures.
 
-Ce module ne modifie jamais la donnee brute. Il produit une serie parallele, de meme
-longueur et de memes horodatages, ou les trous courts sont combles et ou chaque ligne
-declare la methode qui lui a ete appliquee.
+Produit une serie parallele, de meme longueur et de memes horodatages, sans jamais
+modifier la donnee brute. Fonctions pures, sans effet de bord.
 
-Le choix de la strategie par type de site est une hypothese de l'equipe, non validee
-par la mesure. Voir le commentaire de IMPUTATION_METHOD_BY_SITE_TYPE.
-
-Deux principes structurent le traitement :
-
-Les trous sont evalues champ par champ. Une panne du thermometre ne justifie pas de
-recalculer une consommation parfaitement mesuree au meme instant.
-
-Un trou plus long que la limite configuree n'est pas comble. Au dela de quelques
-mesures, une valeur reconstruite n'est plus une estimation mais une invention.
-
-Toutes les fonctions sont pures : meme entree, meme sortie, aucun effet de bord.
+Deux principes. Les trous sont evalues champ par champ : une panne du thermometre ne
+justifie pas de recalculer une consommation bien mesuree. Et un trou plus long que la
+limite configuree n'est pas comble, une valeur reconstruite devenant alors une invention.
 """
 
 from collections.abc import Callable, Mapping
@@ -29,22 +19,12 @@ from enervision_contracts.imputed_reading import ImputationMethod, ImputedReadin
 DEFAULT_IMPUTATION_METHOD: Final[ImputationMethod] = ImputationMethod.LINEAR_INTERPOLATION
 """Strategie retenue pour tout type de site absent de la table ci dessous."""
 
-# Hypothese retenue par l'equipe, et non consigne du cahier des charges : un site a
-# consommation reputee stable, datacenter ou hopital, gagnerait moins a l'interpolation
-# qu'a la recopie de la derniere valeur connue.
-#
-# Cette hypothese n'est pas confirmee par la mesure. Le protocole et les resultats sont
-# reproductibles avec scripts/bilan_strategies.py : sur l'instance mock, l'interpolation
-# faisait aussi bien ou mieux y compris sur SITE005, l'hopital. Deux limites empechent
-# de conclure dans un sens ou dans l'autre. Les series generees se comportent en marche
-# aleatoire plutot qu'en profil de charge, la notion de site stable n'y a donc pas de
-# realite. Et les pannes du simulateur sont si etendues que le parc entier n'a fourni
-# que douze trous exploitables, echantillon trop faible pour departager.
-#
-# La table est donc conservee comme hypothese de travail, exposee en donnee modifiable
-# plutot que codee en dur, et surchargeable par site via le parametre overrides. Le
-# critere reellement determinant est ailleurs : sans connaissance de la mesure suivante,
-# seule la recopie est applicable. Voir impute_series et son parametre lookahead_available.
+# Hypothese de l'equipe, et non consigne : un site a consommation reputee stable
+# gagnerait moins a l'interpolation. Non confirmee par la mesure, le mock generant des
+# marches aleatoires et n'ayant fourni que douze trous exploitables sur tout le parc.
+# Reproductible avec scripts/bilan_strategies.py. La table reste donc une hypothese de
+# travail, modifiable et surchargeable via overrides. Le critere reellement determinant
+# est ailleurs : sans la mesure suivante, seule la recopie est applicable.
 IMPUTATION_METHOD_BY_SITE_TYPE: Final[dict[str, ImputationMethod]] = {
     "datacenter": ImputationMethod.FORWARD_FILL,
     "hospital": ImputationMethod.FORWARD_FILL,
@@ -87,13 +67,9 @@ def impute_series(
 ) -> list[ImputedReading]:
     """Reconstruit une serie en choisissant la strategie adaptee au site.
 
-    Point d'entree du module. L'appelant fournit le type de site plutot que la
-    strategie, ce qui evite de disperser la regle metier dans le code du collecteur.
-
-    L'interpolation exige de connaitre la mesure suivante. Un collecteur temps reel
-    ne la connait pas au moment ou il traite la mesure courante : passer
-    lookahead_available a False replie alors la strategie sur le forward fill, qui
-    ne consulte que le passe, au lieu de renoncer a toute reconstruction.
+    Point d'entree du module. L'appelant fournit le type de site, pas la strategie.
+    lookahead_available a False replie l'interpolation sur le forward fill, seule
+    applicable quand la mesure suivante est inconnue.
 
     Args:
         readings: Releves d'un meme site, tries par horodatage croissant.
@@ -120,12 +96,8 @@ def forward_fill_series(
 ) -> list[ImputedReading]:
     """Comble les trous en recopiant la derniere valeur connue.
 
-    Strategie adaptee aux sites a consommation stable, datacenter ou hopital, ou la
-    valeur precedente reste une bonne approximation. Elle ne consulte que le passe,
-    ce qui la rend applicable en flux temps reel sans attendre la mesure suivante.
-
-    Un trou situe en tout debut de serie n'a aucune valeur anterieure a recopier :
-    il reste tel quel.
+    Ne consulte que le passe, donc applicable en flux temps reel. Un trou en tout debut
+    de serie n'a aucune valeur a recopier et reste tel quel.
 
     Args:
         readings: Releves d'un meme site, tries par horodatage croissant.
@@ -148,12 +120,9 @@ def linear_interpolation_series(
 ) -> list[ImputedReading]:
     """Comble les trous en tracant une droite entre les deux mesures qui les encadrent.
 
-    La position sur cette droite est ponderee par le temps reellement ecoule, et non
-    par le rang de la mesure. Un collecteur temps reel ne tient jamais exactement sa
-    periode, et supposer des intervalles egaux introduirait un biais.
-
-    Contrairement au forward fill, cette strategie a besoin d'un point d'ancrage des
-    deux cotes. Un trou situe en debut ou en fin de serie reste donc tel quel.
+    La position est ponderee par le temps ecoule, non par le rang : un collecteur ne
+    tient jamais exactement sa periode. Exige un ancrage des deux cotes, donc un trou
+    en debut ou en fin de serie reste tel quel.
 
     Args:
         readings: Releves d'un meme site, tries par horodatage croissant.
@@ -329,10 +298,9 @@ def _gap_ranges(measured_values: list[Optional[float]]) -> list[tuple[int, int]]
 
 
 def _validate_series(readings: list[EnergyReading], max_gap_measures: int) -> None:
-    """Verifie les invariants attendus d'une serie avant traitement.
+    """Verifie les invariants d'une serie avant traitement.
 
-    Une serie melangeant plusieurs sites ou mal ordonnee produirait des valeurs
-    reconstruites silencieusement fausses. L'echec explicite est preferable.
+    Une serie melangee ou mal ordonnee produirait des valeurs silencieusement fausses.
 
     Args:
         readings: Releves a controler.

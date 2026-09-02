@@ -1,16 +1,7 @@
 """Interface de publication des messages.
 
-Le collecteur depend de ce protocole, jamais d'un client de messagerie concret. Trois
-consequences.
-
-La chaine complete se demontre et se teste sans broker, en branchant une implementation
-qui ecrit sur un flux texte. Le developpement n'est donc pas suspendu a la mise a
-disposition de l'infrastructure.
-
-Les tests d'orchestration n'ont besoin d'aucun service externe, ce qui les garde rapides
-et deterministes.
-
-Et le jour ou le transport change, seule l'implementation bouge.
+Le collecteur depend de ce protocole, jamais d'un client de messagerie concret : la
+chaine se teste et se demontre sans broker, en branchant une destination sur flux texte.
 """
 
 from types import TracebackType
@@ -28,9 +19,8 @@ class MessagePublisher(Protocol):
     def publish(self, topic: str, envelope: MessageEnvelope[Any]) -> None:
         """Met un message en route vers un topic.
 
-        La cle de partition n'est pas un parametre : elle est portee par l'enveloppe,
-        ce qui interdit qu'un appelant publie une mesure sous une cle etrangere a son
-        site et brise l'ordre chronologique de la partition.
+        La cle de partition est portee par l'enveloppe, jamais passee en parametre :
+        publier sous une cle etrangere au site briserait l'ordre de la partition.
 
         Args:
             topic: Nom du topic de destination.
@@ -45,8 +35,7 @@ class MessagePublisher(Protocol):
             timeout_seconds: Delai maximal d'attente.
 
         Returns:
-            Le nombre de messages encore en attente a l'expiration du delai. Zero
-            signifie que tout a ete remis.
+            Le nombre de messages encore en attente, zero si tout a ete remis.
         """
         ...
 
