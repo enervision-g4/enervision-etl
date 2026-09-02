@@ -11,16 +11,18 @@ Usage:
 
 import sys
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from typing import Optional
 
 from enervision_etl.config import load_settings
+from enervision_etl.contracts.energy_reading import EnergyReading
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import MockApiClient
 from enervision_etl.transform.imputation import forward_fill_series
 from enervision_etl.transform.normalization import normalize_reading
 
 MAX_GAP_MEASURES = 3
-POSITIONS_A_MASQUER = (4, 9, 10, 15, 16, 17)
+MIN_PLAGE_CONTINUE = 12
 
 
 def titre(texte: str) -> None:
@@ -29,6 +31,15 @@ def titre(texte: str) -> None:
 
 def affiche(valeur: Optional[float], largeur: int = 9) -> str:
     return f"{valeur:>{largeur}.2f}" if valeur is not None else f"{'NULL':>{largeur}}"
+
+
+def positions_a_masquer(longueur: int) -> list[int]:
+    """Place un trou de 1, un trou de 2 et un trou de 3 mesures, bien separes."""
+    isolee = longueur // 5
+    paire = 2 * longueur // 5
+    triplet = 3 * longueur // 5
+    candidates = [isolee, paire, paire + 1, triplet, triplet + 1, triplet + 2]
+    return sorted({position for position in candidates if 0 < position < longueur})
 
 
 site_id = sys.argv[1] if len(sys.argv) > 1 else "SITE002"
@@ -67,42 +78,78 @@ else:
                   f"{', '.join(remplie.imputed_fields) or '-'}")
 
 titre("VOLET 2 : controle de justesse sur des valeurs dont on connait la verite")
-saines = [m for m in serie if m.consumption_kw is not None]
-if len(saines) < 20:
-    print(f"  Seulement {len(saines)} mesures saines, trop peu pour le controle.")
+
+# Le controle n'a de sens que sur des mesures reellement consecutives dans le temps.
+# Compacter la serie en retirant ses trous rendrait voisines des mesures separees de
+# plusieurs heures, et gonflerait artificiellement l'erreur attribuee a la strategie.
+plages: list[list[EnergyReading]] = []
+plage_courante: list[EnergyReading] = []
+for mesure in serie:
+    if mesure.consumption_kw is None:
+        if plage_courante:
+            plages.append(plage_courante)
+        plage_courante = []
+    else:
+        plage_courante.append(mesure)
+if plage_courante:
+    plages.append(plage_courante)
+
+continue_ = max(plages, key=len) if plages else []
+if len(continue_) < MIN_PLAGE_CONTINUE:
+    print(f"  Plus longue plage continue : {len(continue_)} mesures, il en faut "
+          f"au moins {MIN_PLAGE_CONTINUE}. Elargissez la fenetre ou affinez la resolution.")
     sys.exit(0)
 
-positions = [p for p in POSITIONS_A_MASQUER if p < len(saines)]
-verite = {p: saines[p].consumption_kw for p in positions}
+valeurs = [m.consumption_kw for m in continue_ if m.consumption_kw is not None]
+ecarts_voisins = [
+    100 * abs(suivante - courante) / courante
+    for courante, suivante in pairwise(valeurs)
+    if courante
+]
+variation_moyenne = sum(ecarts_voisins) / len(ecarts_voisins)
+print(f"  Plage continue retenue : {len(continue_)} mesures, "
+      f"de {continue_[0].timestamp:%H:%M} a {continue_[-1].timestamp:%H:%M}")
+print(f"  Consommation : min {min(valeurs):.1f} kW, max {max(valeurs):.1f} kW, "
+      f"moyenne {sum(valeurs) / len(valeurs):.1f} kW")
+print(f"  Variation moyenne entre deux mesures voisines : {variation_moyenne:.1f} %")
+print(f"  Variation maximale entre deux mesures voisines : {max(ecarts_voisins):.1f} %")
+print("\n  Ce dernier chiffre est le plancher incompressible : aucune strategie ne peut")
+print("  faire mieux que la variation naturelle du signal qu'elle tente de reconstituer.")
+
+positions = positions_a_masquer(len(continue_))
+verite = {p: continue_[p].consumption_kw for p in positions}
 trouee = [
     mesure.model_copy(update={"consumption_kw": None, "consumption_kwh": None})
     if position in verite
     else mesure
-    for position, mesure in enumerate(saines)
+    for position, mesure in enumerate(continue_)
 ]
-print(f"  {len(verite)} valeurs masquees sur {len(saines)} : positions {positions}")
-print("  Elles forment un trou de 1, un trou de 2 et un trou de 3 mesures consecutives.")
+print(f"\n  {len(verite)} valeurs masquees aux positions {positions} :")
+print("  un trou de 1 mesure, un trou de 2, un trou de 3 consecutives.")
 
 reconstruite = forward_fill_series(trouee, MAX_GAP_MEASURES)
 
-print(f"\n  {'heure':<7}{'VRAIE':>10}{'RECONSTRUITE':>14}{'ecart':>10}{'ecart %':>10}  methode")
+print(f"\n  {'heure':<7}{'ANCRE':>10}{'VRAIE':>10}{'RECONSTRUITE':>14}{'ecart %':>10}  methode")
 print("  " + "-" * 78)
 erreurs = []
 for position in positions:
     attendue = verite[position]
     obtenue = reconstruite[position].consumption_kw
-    if obtenue is None:
-        print(f"  {saines[position].timestamp:%H:%M}  {affiche(attendue)}"
-              f"{'non comblee':>14}{'-':>10}{'-':>10}  "
-              f"{reconstruite[position].imputation_method}")
+    ancre = next(
+        (continue_[p].consumption_kw for p in range(position - 1, -1, -1) if p not in verite),
+        None,
+    )
+    if obtenue is None or attendue is None:
+        print(f"  {continue_[position].timestamp:%H:%M}  {affiche(ancre)}{affiche(attendue)}"
+              f"{'non comblee':>14}{'-':>10}  {reconstruite[position].imputation_method}")
         continue
-    ecart = abs(obtenue - attendue)
-    erreurs.append(100 * ecart / attendue)
-    print(f"  {saines[position].timestamp:%H:%M}  {affiche(attendue)}{affiche(obtenue, 14)}"
-          f"{affiche(ecart, 10)}{erreurs[-1]:>9.2f}%  "
-          f"{reconstruite[position].imputation_method}")
+    erreur = 100 * abs(obtenue - attendue) / attendue
+    erreurs.append(erreur)
+    print(f"  {continue_[position].timestamp:%H:%M}  {affiche(ancre)}{affiche(attendue)}"
+          f"{affiche(obtenue, 14)}{erreur:>9.2f}%  {reconstruite[position].imputation_method}")
 
 if erreurs:
-    print(f"\n  Erreur moyenne : {sum(erreurs) / len(erreurs):.2f} %")
+    print(f"\n  Erreur moyenne  : {sum(erreurs) / len(erreurs):.2f} %")
     print(f"  Erreur maximale : {max(erreurs):.2f} %")
-print("\n  Ce chiffre servira de point de comparaison face a l'interpolation lineaire.")
+    print(f"  Reference, variation naturelle du signal : {variation_moyenne:.1f} % en moyenne")
+print("\n  Ces chiffres serviront de point de comparaison face a l'interpolation lineaire.")
