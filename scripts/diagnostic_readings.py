@@ -1,121 +1,121 @@
-"""Diagnostic cible de l'endpoint /readings et du fuseau horaire.
+"""Caracterise le taux de valeurs nulles de /api/v1/readings.
 
-La sonde a revele une incoherence : 99,8 pour cent de valeurs nulles sur /readings
-alors que /current est majoritairement sain. Ce script interroge l'API en appels
-bruts, sans pagination, pour determiner le comportement reel de l'endpoint.
+La sonde a montre 100 pour cent de nuls sur un appel limit=100 couvrant 24 heures,
+alors que le meme endpoint avec limit=3 sur la meme periode renvoyait trois mesures
+saines, et que /current est majoritairement sain. Ce script mesure de quoi depend
+reellement ce taux : la resolution demandee, l'anciennete des donnees, ou l'etat
+instantane des capteurs.
 """
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from itertools import pairwise
 from typing import Any
 
 from enervision_etl.config import load_settings
-from enervision_etl.contracts.energy_reading import MEASUREMENT_FIELD_NAMES
+from enervision_etl.extract.errors import MockApiError
 from enervision_etl.extract.http_client import ResilientHttpClient
 
 CIBLE = "SITE002"
 
 
 def titre(texte: str) -> None:
-    print(f"\n{'=' * 74}\n{texte}\n{'=' * 74}")
+    print(f"\n{'=' * 78}\n{texte}\n{'=' * 78}")
 
 
-def horodatages(mesures: list[dict[str, Any]]) -> list[datetime]:
-    return [datetime.fromisoformat(mesure["timestamp"]) for mesure in mesures]
+def taux_de_nuls(mesures: list[dict[str, Any]]) -> float:
+    if not mesures:
+        return float("nan")
+    nuls = sum(1 for mesure in mesures if mesure["consumption_kw"] is None)
+    return 100 * nuls / len(mesures)
 
 
 settings = load_settings()
+maintenant = datetime.now(UTC).replace(tzinfo=None)
 print(f"Cible : {settings.api_mock_base_url}  site : {CIBLE}")
+print(f"Instant de reference (UTC) : {maintenant.isoformat()}")
 
-with ResilientHttpClient(settings.api_mock_base_url, 10.0) as http:
+with ResilientHttpClient(settings.api_mock_base_url, 15.0) as http:
 
-    titre("A. Un appel brut, limit=3, sans fenetre temporelle")
-    trois_mesures = http.get_json("/api/v1/readings", {"site_id": CIBLE, "limit": 3})
-    print(f"  Type renvoye : {type(trois_mesures).__name__}, {len(trois_mesures)} elements")
-    for mesure in trois_mesures:
-        print(f"    {mesure['timestamp']}  consumption_kw={mesure['consumption_kw']}  "
-              f"quality={mesure['data_quality']}  null_reasons={mesure['null_reasons']}")
+    def lire(debut: datetime, fin: datetime, limit: int) -> list[dict[str, Any]]:
+        return http.get_json(
+            "/api/v1/readings",
+            {
+                "site_id": CIBLE,
+                "start_time": debut.isoformat(),
+                "end_time": fin.isoformat(),
+                "limit": limit,
+            },
+        )
 
-    titre("B. Deux appels identiques : la serie est-elle stable ou regeneree ?")
-    premier = http.get_json("/api/v1/readings", {"site_id": CIBLE, "limit": 5})
-    second = http.get_json("/api/v1/readings", {"site_id": CIBLE, "limit": 5})
-    ts_premier = [m["timestamp"] for m in premier]
-    ts_second = [m["timestamp"] for m in second]
-    print(f"  Appel 1 : {ts_premier[0]} ... {ts_premier[-1]}")
-    print(f"  Appel 2 : {ts_second[0]} ... {ts_second[-1]}")
-    print(f"  Horodatages identiques : {ts_premier == ts_second}")
-    if ts_premier != ts_second:
-        print("  -> L'API REGENERE la serie a chaque appel. Toute pagination par")
-        print("     decalage de start_time est impossible : elle empilerait des")
-        print("     series differentes au lieu de parcourir une serie unique.")
+    titre("1. Etat instantane des capteurs (source de verite du simulateur)")
+    try:
+        etats = http.get_json("/api/v1/sensors/status")
+        for site_id, etat in etats.items():
+            marque = "  <== cible" if site_id == CIBLE else ""
+            pannes = [
+                f"{nom}(jusqu'a {detail['failing_until']})"
+                for nom, detail in etat["sensors"].items()
+                if detail["status"] != "ok"
+            ]
+            print(f"  {site_id}  overall={etat['overall']:<9} "
+                  f"{'pannes: ' + ', '.join(pannes) if pannes else 'tous capteurs ok'}{marque}")
+    except MockApiError as echec:
+        print(f"  Endpoint indisponible : {echec}")
 
-    titre("C. La fenetre start_time / end_time est-elle respectee ?")
-    fin = datetime.now()
-    debut = fin - timedelta(hours=2)
-    dans_fenetre = http.get_json(
-        "/api/v1/readings",
-        {"site_id": CIBLE, "start_time": debut.isoformat(),
-         "end_time": fin.isoformat(), "limit": 10},
-    )
-    bornes = horodatages(dans_fenetre)
-    print(f"  Demande : {debut.isoformat()}  ->  {fin.isoformat()}")
-    print(f"  Recu    : {bornes[0].isoformat()}  ->  {bornes[-1].isoformat()}")
-    respectee = all(debut <= instant <= fin for instant in bornes)
-    print(f"  Toutes les mesures sont dans la fenetre demandee : {respectee}")
-    couverture = (bornes[-1] - bornes[0]).total_seconds() / (fin - debut).total_seconds()
-    print(f"  La serie couvre {couverture * 100:.1f} % de la fenetre demandee")
+    titre("2. Meme fenetre de 24 h, resolution variable")
+    debut_24h, fin_24h = maintenant - timedelta(hours=24), maintenant
+    print(f"  {'limit':>6}  {'intervalle':>12}  {'nuls':>7}  data_quality")
+    for limit in (1, 3, 10, 25, 50, 100, 250, 500, 1000):
+        mesures = lire(debut_24h, fin_24h, limit)
+        intervalle = 86400 / limit
+        qualites = dict(Counter(m["data_quality"] for m in mesures))
+        print(f"  {limit:>6}  {intervalle:>10.0f} s  {taux_de_nuls(mesures):>6.1f}%  {qualites}")
 
-    titre("D. Pas reel entre mesures, en un seul appel non pagine")
-    cent_mesures = http.get_json("/api/v1/readings", {"site_id": CIBLE, "limit": 100})
-    instants = horodatages(cent_mesures)
-    ecarts = [(b - a).total_seconds() for a, b in pairwise(instants)]
-    print(f"  {len(cent_mesures)} mesures recues")
-    print(f"  Ecart minimal : {min(ecarts):.3f} s")
-    print(f"  Ecart maximal : {max(ecarts):.3f} s")
-    print(f"  Ecart median  : {sorted(ecarts)[len(ecarts) // 2]:.3f} s")
-    print(f"  Strictement croissant : {all(e > 0 for e in ecarts)}")
+    titre("3. Resolution fixe (60 s), anciennete de la fenetre variable")
+    print(f"  {'fenetre':>22}  {'points':>7}  {'nuls':>7}  data_quality")
+    fenetres = [
+        ("derniere heure", 0, 1),
+        ("6 dernieres heures", 0, 6),
+        ("24 dernieres heures", 0, 24),
+        ("il y a 24 a 48 h", 24, 48),
+        ("il y a 48 a 72 h", 48, 72),
+        ("il y a 7 jours", 168, 169),
+    ]
+    for etiquette, heures_avant_debut, heures_avant_fin in fenetres:
+        fin = maintenant - timedelta(hours=heures_avant_debut)
+        debut = maintenant - timedelta(hours=heures_avant_fin)
+        limit = min(1000, max(1, int((fin - debut).total_seconds() // 60)))
+        mesures = lire(debut, fin, limit)
+        qualites = dict(Counter(m["data_quality"] for m in mesures))
+        print(f"  {etiquette:>22}  {len(mesures):>7}  {taux_de_nuls(mesures):>6.1f}%  {qualites}")
 
-    titre("E. Taux de valeurs nulles par champ, sur ce meme appel unique")
-    for champ in MEASUREMENT_FIELD_NAMES:
-        nuls = sum(1 for mesure in cent_mesures if mesure[champ] is None)
-        proportion = 100 * nuls / len(cent_mesures)
-        print(f"  {champ:<22} {nuls:>3}/{len(cent_mesures)}  ({proportion:5.1f} %)")
-    qualites = Counter(mesure["data_quality"] for mesure in cent_mesures)
-    causes = Counter(cause for mesure in cent_mesures for cause in mesure["null_reasons"])
-    print(f"\n  data_quality : {dict(qualites)}")
-    print(f"  null_reasons : {dict(causes) or 'aucun'}")
+    titre("4. Requete strictement identique, repetee 5 fois")
+    print("  Si le taux varie d'un appel a l'autre, le simulateur tire au hasard.")
+    for essai in range(1, 6):
+        mesures = lire(maintenant - timedelta(hours=2), maintenant, 120)
+        proportion = taux_de_nuls(mesures)
+        print(f"  essai {essai} : {proportion:>6.1f}% de nuls sur {len(mesures)} mesures")
 
-    titre("F. Longueur des trous consecutifs sur consumption_kw")
-    longueurs: list[int] = []
-    courant = 0
-    for mesure in cent_mesures:
-        if mesure["consumption_kw"] is None:
-            courant += 1
-        elif courant:
-            longueurs.append(courant)
-            courant = 0
-    if courant:
-        longueurs.append(courant)
-    print(f"  Nombre de trous : {len(longueurs)}")
-    print(f"  Longueurs observees : {dict(Counter(longueurs)) or 'aucun trou'}")
-    if longueurs:
-        imputables = sum(1 for taille in longueurs if taille <= 3)
-        print(f"  Trous de 3 mesures ou moins (donc imputables) : {imputables}/{len(longueurs)}")
+    titre("5. Echantillon brut : 6 mesures sur les 2 dernieres heures")
+    echantillon = lire(maintenant - timedelta(hours=2), maintenant, 6)
+    if not echantillon:
+        print("  Aucune mesure renvoyee sur cette fenetre.")
+    for mesure in echantillon:
+        print(f"  {mesure['timestamp']}  kw={mesure['consumption_kw']!s:<8} "
+              f"temp={mesure['temperature_celsius']!s:<6} "
+              f"quality={mesure['data_quality']:<9} {mesure['null_reasons']}")
 
-    titre("G. Fuseau horaire : /current compare a l'heure de VOTRE machine")
+    titre("6. Comparaison directe avec /current au meme instant")
     instantane = http.get_json(f"/api/v1/sites/{CIBLE}/current", site_id=CIBLE)
-    horodatage_api = datetime.fromisoformat(instantane["timestamp"])
-    maintenant_local = datetime.now()
-    maintenant_utc = datetime.now(UTC).replace(tzinfo=None)
-    ecart_local = (maintenant_local - horodatage_api).total_seconds()
-    ecart_utc = (maintenant_utc - horodatage_api).total_seconds()
-    print(f"  Horodatage renvoye par l'API : {horodatage_api.isoformat()}")
-    print(f"  Heure locale de la machine   : {maintenant_local.isoformat()}")
-    print(f"  Heure UTC                    : {maintenant_utc.isoformat()}")
-    print(f"\n  Ecart avec l'heure locale : {ecart_local:>9.1f} s")
-    print(f"  Ecart avec l'heure UTC    : {ecart_utc:>9.1f} s")
-    if abs(ecart_local) < abs(ecart_utc):
-        print("\n  -> L'API emet en HEURE LOCALE. Il faudra convertir vers UTC avant Kafka.")
+    print(f"  /current   : kw={instantane['consumption_kw']}  "
+          f"quality={instantane['data_quality']}  {instantane['null_reasons']}")
+    dernieres = lire(maintenant - timedelta(minutes=10), maintenant, 10)
+    if not dernieres:
+        print("  /readings  : aucune mesure sur les 10 dernieres minutes")
     else:
-        print("\n  -> L'API emet en UTC. API_MOCK_SOURCE_TIMEZONE=UTC est le bon reglage.")
+        derniere = dernieres[-1]
+        print(f"  /readings  : kw={derniere['consumption_kw']}  "
+              f"quality={derniere['data_quality']}  {derniere['null_reasons']}")
+        print("\n  Ces deux lignes decrivent le meme site a la meme minute. Si l'une est")
+        print("  saine et l'autre nulle, les deux endpoints ne partagent pas le meme")
+        print("  simulateur, et le mode batch ne peut pas servir de reference.")
