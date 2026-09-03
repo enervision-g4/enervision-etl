@@ -57,6 +57,7 @@ cp .env.example .env
 | `API_MOCK_BASE_URL` | URL de l'API Mock, schema `http://` ou `https://` obligatoire |
 | `API_MOCK_TIMEOUT_SECONDS` | Delai d'attente applique a chaque requete |
 | `API_MOCK_SOURCE_TIMEZONE` | Fuseau suppose des horodatages naifs renvoyes par l'API |
+| `API_MOCK_MIN_REQUEST_INTERVAL_SECONDS` | Espacement minimal entre deux requetes |
 | `POLL_INTERVAL_SECONDS` | Periode du collecteur temps reel |
 | `SITE_REFRESH_INTERVAL_SECONDS` | Delai entre deux verifications du referentiel |
 | `SITES` | Vide ou `ALL` pour tout le parc, sinon liste separee par des virgules |

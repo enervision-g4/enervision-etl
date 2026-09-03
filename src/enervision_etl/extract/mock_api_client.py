@@ -11,6 +11,7 @@ from typing import Any, Final, Optional
 from enervision_contracts.energy_reading import EnergyReading
 from enervision_contracts.site import Site
 
+from ..logging_setup import get_logger
 from .errors import MockApiError, WindowTooLargeError
 from .http_client import ResilientHttpClient
 
@@ -22,6 +23,11 @@ DEFAULT_RESOLUTION_SECONDS: Final[float] = 60.0
 
 # Borne le nombre de tranches. Une periode plus longue est refusee, jamais tronquee.
 MAX_CHUNKS_PER_WINDOW: Final[int] = 500
+
+# Au dela, la rafale de requetes suffit a mettre l'instance mock en defaut.
+CHUNKS_WORTH_WARNING_ABOUT: Final[int] = 10
+
+logger = get_logger("mock_api_client")
 
 
 class MockApiClient:
@@ -141,6 +147,19 @@ class MockApiClient:
         collected_readings: list[EnergyReading] = []
         already_collected_timestamps: set[datetime] = set()
         chunk_start_time = start_time
+
+        expected_chunks = ceil(
+            (end_time - start_time).total_seconds() / chunk_duration.total_seconds()
+        )
+        if expected_chunks >= CHUNKS_WORTH_WARNING_ABOUT:
+            logger.warning(
+                "fenetre_exigeante",
+                site=site_id,
+                requetes=expected_chunks,
+                conseil="une rafale de requetes degrade l'instance mock, qui renvoie "
+                "alors des series entierement nulles : reduire la periode ou augmenter "
+                "API_MOCK_MIN_REQUEST_INTERVAL_SECONDS",
+            )
 
         fetched_chunks = 0
         while chunk_start_time < end_time:

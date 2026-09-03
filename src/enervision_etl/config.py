@@ -34,6 +34,7 @@ class EtlSettings(BaseSettings):
         api_mock_base_url: Racine de l'API mock, schema http ou https obligatoire.
         api_mock_timeout_seconds: Delai d'attente applique a chaque requete.
         api_mock_source_timezone: Fuseau suppose des horodatages naifs de l'API.
+        api_mock_min_request_interval_seconds: Espacement minimal entre deux requetes.
         poll_interval_seconds: Periode du collecteur temps reel.
         site_refresh_interval_seconds: Delai entre deux verifications de la liste
             des sites. Une republication n'a lieu que si un site a change.
@@ -62,6 +63,9 @@ class EtlSettings(BaseSettings):
     api_mock_base_url: str
     api_mock_timeout_seconds: float = Field(default=5.0, gt=0)
     api_mock_source_timezone: str = "UTC"
+    # L'instance mock se degrade en rafale et renvoie alors des series entierement
+    # nulles. Espacer les requetes protege la mesure autant que le serveur.
+    api_mock_min_request_interval_seconds: float = Field(default=0.2, ge=0)
 
     poll_interval_seconds: int = Field(default=60, gt=0)
     site_refresh_interval_seconds: float = Field(default=3600.0, gt=0)

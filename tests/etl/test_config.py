@@ -7,6 +7,7 @@ CONFIGURABLE_VARIABLES = (
     "API_MOCK_BASE_URL",
     "API_MOCK_TIMEOUT_SECONDS",
     "API_MOCK_SOURCE_TIMEZONE",
+    "API_MOCK_MIN_REQUEST_INTERVAL_SECONDS",
     "POLL_INTERVAL_SECONDS",
     "SITE_REFRESH_INTERVAL_SECONDS",
     "SITES",
@@ -69,6 +70,7 @@ def test_defaults_match_the_project_conventions(
     assert settings.poll_interval_seconds == 60
     assert settings.site_refresh_interval_seconds == 3600.0
     assert settings.api_mock_source_timezone == "UTC"
+    assert settings.api_mock_min_request_interval_seconds == 0.2
     assert settings.kafka_topic_site == "enervision.site"
     assert settings.kafka_topic_measure_raw == "enervision.measure_raw"
     assert settings.kafka_topic_measure_imputed == "enervision.measure_imputed"
