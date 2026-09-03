@@ -131,7 +131,7 @@ Ce fichier reproduit ce que Kafka transporterait, et sert de jeu d'essai aux con
 Pour en tirer un bilan lisible plutot que de relire les lignes une a une :
 
 ```bash
-uv run python scripts/inspecter_flux.py messages.jsonl
+uv run python scripts/inspect_message_stream.py messages.jsonl
 ```
 
 Une fenetre integralement nulle est refusee : ce n'est pas un historique mais l'etat
@@ -195,7 +195,7 @@ contre une instance, il faut verifier que cette instance correspond bien au
 contrat documente.
 
 ```bash
-uv run python scripts/sonde_api.py
+uv run python scripts/probe_api_contract.py
 ```
 
 La sonde compare la liste des sites exposes a la variable `SITES`, valide chaque
@@ -218,10 +218,10 @@ src/
     load/                 publication vers Kafka
   enervision_consumer/    consumers de persistance et d'alerting
 scripts/
-  sonde_api.py            controle de conformite d'une instance de l'API Mock
-  diagnostic_readings.py  caracterisation de l'endpoint historique
-  demo_imputation.py      justesse de l'imputation sur donnees reelles
-  bilan_strategies.py     comparaison des strategies sur l'ensemble du parc
+  probe_api_contract.py            controle de conformite d'une instance de l'API Mock
+  diagnose_readings_endpoint.py  caracterisation de l'endpoint historique
+  measure_imputation_accuracy.py      justesse de l'imputation sur donnees reelles
+  compare_imputation_strategies.py     comparaison des strategies sur l'ensemble du parc
 tests/
   conftest.py             fixtures partagees
   fixtures/               les quatre cas de qualite : good, partial, degraded, critical
