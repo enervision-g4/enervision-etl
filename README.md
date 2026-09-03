@@ -127,10 +127,33 @@ uv run enervision-etl backfill --site SITE002 --hours 6 > messages.jsonl
 ```
 
 Ce fichier reproduit ce que Kafka transporterait, et sert de jeu d'essai aux consumers.
+Pour en tirer un bilan lisible plutot que de relire les lignes une a une :
+
+```bash
+uv run python scripts/inspecter_flux.py messages.jsonl
+```
 
 Une fenetre integralement nulle est refusee : ce n'est pas un historique mais l'etat
 d'une panne au moment de l'appel, projete sur toute la periode. `--force-degenerate`
 passe outre.
+
+## Conteneurisation
+
+L'image est construite en deux etapes : `uv` installe les dependances figees par
+`uv.lock`, puis l'etape finale ne conserve que l'environnement resolu, sans outil de
+construction. Le processus tourne sous un utilisateur dedie, jamais en root.
+
+```bash
+docker build -t enervision-etl .
+docker run --rm --env-file .env enervision-etl collect-realtime --cycles 1
+```
+
+Le conteneur traite `SIGTERM` : `docker stop` laisse le cycle en cours se terminer,
+puis vide la file de publication avant de rendre la main. Sans cela, les messages en
+attente seraient perdus a chaque redemarrage.
+
+Le fichier compose n'est pas ici mais dans `enervision-devops`, a
+`compose/etl.yml`, avec ceux des autres services.
 
 ## Verification
 
