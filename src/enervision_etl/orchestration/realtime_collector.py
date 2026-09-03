@@ -12,7 +12,7 @@ Le referentiel n'est relu qu'a intervalle configure, et republie seulement s'il 
 """
 
 from collections import Counter, deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from time import perf_counter
 from types import TracebackType
@@ -119,12 +119,17 @@ class RealtimeCollector:
         self,
         max_cycles: Optional[int] = None,
         interval_seconds: float = 60.0,
+        should_stop: Optional[Callable[[], bool]] = None,
     ) -> list[CycleReport]:
         """Execute la boucle de collecte.
+
+        L'arret est verifie entre deux cycles, jamais au milieu : un cycle entame va
+        toujours a son terme, ce qui evite de publier une photo partielle du parc.
 
         Args:
             max_cycles: Nombre de cycles a executer, illimite si None.
             interval_seconds: Periode visee entre deux cycles.
+            should_stop: Consulte avant chaque cycle pour interrompre la boucle.
 
         Returns:
             Le bilan de chaque cycle execute.
@@ -133,6 +138,9 @@ class RealtimeCollector:
         reports: list[CycleReport] = []
 
         while max_cycles is None or len(reports) < max_cycles:
+            if should_stop is not None and should_stop():
+                logger.info("boucle_interrompue", cycles=len(reports))
+                break
             tick = scheduler.wait_for_next_tick()
             if tick.skipped_ticks:
                 logger.warning(

@@ -19,6 +19,7 @@ from .load.publisher import MessagePublisher
 from .load.stdout_publisher import StdoutPublisher
 from .logging_setup import configure_logging, get_logger
 from .orchestration.batch_backfill import BatchBackfill
+from .orchestration.graceful_shutdown import ShutdownRequest
 from .orchestration.realtime_collector import RealtimeCollector
 
 application = typer.Typer(
@@ -58,6 +59,11 @@ def collect_realtime(
     settings = load_settings()
     configure_logging(settings.log_level, settings.log_as_json)
 
+    # Detourne SIGTERM avant toute publication : sans cela, docker stop interromprait
+    # le processus sans vider la file du producer.
+    shutdown = ShutdownRequest()
+    shutdown.install()
+
     with ResilientHttpClient(
         settings.api_mock_base_url, settings.api_mock_timeout_seconds
     ) as http_client:
@@ -73,7 +79,11 @@ def collect_realtime(
             configured_sites=settings.sites,
         )
         try:
-            collector.run(max_cycles=cycles, interval_seconds=settings.poll_interval_seconds)
+            collector.run(
+                max_cycles=cycles,
+                interval_seconds=settings.poll_interval_seconds,
+                should_stop=lambda: shutdown.requested,
+            )
         except KeyboardInterrupt:
             logger.info("arret_demande")
         except MockApiError as failure:

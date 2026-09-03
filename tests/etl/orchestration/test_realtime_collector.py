@@ -355,3 +355,53 @@ def test_timestamps_are_normalized_to_utc(
     published = publisher.payloads_on(MEASURE_TOPIC)[0]
     assert published.timestamp == datetime(2026, 9, 2, 10, 0, tzinfo=UTC)
     assert published.timestamp.utcoffset() == timedelta(0)
+
+
+def test_the_loop_stops_when_a_shutdown_is_requested(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry,
+        {
+            "SITE001": [build_reading("SITE001", m, 100.0) for m in range(5)],
+            "SITE002": [build_reading("SITE002", m, 500.0) for m in range(5)],
+        },
+    )
+    collector = build_collector(api_client, publisher)
+    cycles_before_stop = 2
+    executed = 0
+
+    def should_stop() -> bool:
+        nonlocal executed
+        executed += 1
+        return executed > cycles_before_stop
+
+    reports = collector.run(interval_seconds=0.001, should_stop=should_stop)
+
+    assert len(reports) == cycles_before_stop
+
+
+def test_a_started_cycle_always_completes_before_stopping(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Interrompre au milieu publierait une photo partielle du parc.
+    api_client = ScriptedApiClient(
+        registry,
+        {"SITE001": [build_reading("SITE001", 0, 100.0)],
+         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+    )
+    collector = build_collector(api_client, publisher)
+    already_asked = False
+
+    def should_stop() -> bool:
+        nonlocal already_asked
+        if not already_asked:
+            already_asked = True
+            return False
+        return True
+
+    collector.run(interval_seconds=0.001, should_stop=should_stop)
+
+    assert len(publisher.payloads_on(MEASURE_TOPIC)) == 2
