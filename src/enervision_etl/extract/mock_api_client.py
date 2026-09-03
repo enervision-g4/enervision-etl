@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from math import ceil
 from typing import Any, Final, Optional
 
+from enervision_contracts.alert import Alert
 from enervision_contracts.energy_reading import EnergyReading
 from enervision_contracts.site import Site
 
@@ -103,6 +104,21 @@ class MockApiClient:
             site_id=site_id,
         )
         return EnergyReading.model_validate(reading_payload)
+
+    def fetch_active_alerts(self) -> list[Alert]:
+        """Recupere les alertes actives de tout le parc.
+
+        L'endpoint n'est pas decoupe par site : un cycle de collecte ne lui coute
+        qu'une requete, quelle que soit la taille du parc.
+
+        Returns:
+            Les alertes actives, liste vide si aucune n'est en cours.
+
+        Raises:
+            MockApiUnavailableError: Si l'API reste injoignable.
+        """
+        alert_payloads = self._http_client.get_json("/api/v1/alerts")
+        return [Alert.model_validate(payload) for payload in alert_payloads]
 
     def fetch_readings_window(
         self,

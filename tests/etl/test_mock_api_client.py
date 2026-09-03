@@ -363,3 +363,54 @@ def test_a_window_at_the_chunking_capacity_is_accepted(
     )
 
     assert len(readings) == 2 * MAX_READINGS_PER_REQUEST
+
+
+@responses.activate
+def test_fetch_active_alerts_returns_typed_alerts(
+    api_client: MockApiClient,
+    active_alerts_payload: list[dict[str, Any]],
+) -> None:
+    responses.get(f"{BASE_URL}/api/v1/alerts", json=active_alerts_payload)
+
+    alerts = api_client.fetch_active_alerts()
+
+    assert [alert.site_id for alert in alerts] == ["SITE002", "SITE001", "SITE003"]
+    assert alerts[0].alert_id == "ALR-SITE002-1718458320"
+    assert alerts[0].value == 812.5
+
+
+@responses.activate
+def test_fetch_active_alerts_accepts_a_healthy_park(api_client: MockApiClient) -> None:
+    # Aucune alerte active est un resultat normal, pas une anomalie a signaler.
+    responses.get(f"{BASE_URL}/api/v1/alerts", json=[])
+
+    assert api_client.fetch_active_alerts() == []
+
+
+@responses.activate
+def test_fetch_active_alerts_covers_the_whole_park_in_one_call(
+    api_client: MockApiClient,
+    active_alerts_payload: list[dict[str, Any]],
+) -> None:
+    # L'endpoint n'est pas decoupe par site, contrairement aux mesures instantanees :
+    # un cycle de collecte ne lui coute qu'une requete, quel que soit le parc.
+    responses.get(f"{BASE_URL}/api/v1/alerts", json=active_alerts_payload)
+
+    api_client.fetch_active_alerts()
+
+    assert len(responses.calls) == 1
+    assert urlparse(responses.calls[0].request.url).query == ""
+
+
+@responses.activate
+def test_fetch_active_alerts_preserves_an_alert_without_measurement(
+    api_client: MockApiClient,
+    active_alerts_payload: list[dict[str, Any]],
+) -> None:
+    unmeasured_alert = active_alerts_payload[0] | {"value": None, "threshold": None}
+    responses.get(f"{BASE_URL}/api/v1/alerts", json=[unmeasured_alert])
+
+    alerts = api_client.fetch_active_alerts()
+
+    assert alerts[0].value is None
+    assert alerts[0].threshold is None
