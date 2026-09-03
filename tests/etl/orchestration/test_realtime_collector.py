@@ -422,3 +422,49 @@ def test_a_shutdown_during_the_wait_prevents_one_more_cycle(
     reports = collector.run(interval_seconds=5.0, should_stop=should_stop)
 
     assert len(reports) == 1
+
+
+def test_an_unreachable_cadence_is_reported_at_startup(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Avec 2 sites espaces de 40 s, un cycle dure 80 s : il ne peut pas tenir dans 60 s.
+    api_client = ScriptedApiClient(
+        registry,
+        {"SITE001": [build_reading("SITE001", 0, 100.0)],
+         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+    )
+    collector = build_collector(api_client, publisher)
+    collector.run_cycle()
+
+    infeasible = collector.cadence_shortfall_seconds(
+        poll_interval_seconds=60.0,
+        minimum_request_interval_seconds=40.0,
+    )
+
+    assert infeasible == pytest.approx(20.0)
+
+
+def test_a_reachable_cadence_reports_no_shortfall(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry,
+        {"SITE001": [build_reading("SITE001", 0, 100.0)],
+         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+    )
+    collector = build_collector(api_client, publisher)
+    collector.run_cycle()
+
+    assert collector.cadence_shortfall_seconds(60.0, 2.0) == 0.0
+
+
+def test_the_cadence_cannot_be_judged_before_the_park_is_known(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(registry, {})
+    collector = build_collector(api_client, publisher)
+
+    assert collector.cadence_shortfall_seconds(60.0, 40.0) == 0.0

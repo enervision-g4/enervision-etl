@@ -115,6 +115,32 @@ class RealtimeCollector:
         # Fenetre glissante par site : de quoi ancrer une recopie sans jamais grossir.
         self._recent_readings: dict[str, deque[EnergyReading]] = {}
 
+    def cadence_shortfall_seconds(
+        self,
+        poll_interval_seconds: float,
+        minimum_request_interval_seconds: float,
+    ) -> float:
+        """Mesure de combien la periode demandee est trop courte pour le parc collecte.
+
+        Interroger N sites en respectant un espacement minimal prend N fois cet
+        espacement. Si ce total depasse la periode, le collecteur ne tiendra jamais sa
+        cadence : autant le dire au demarrage plutot que de laisser l'exploitant
+        decouvrir des cycles sautes.
+
+        Args:
+            poll_interval_seconds: Periode visee entre deux cycles.
+            minimum_request_interval_seconds: Espacement impose entre deux requetes.
+
+        Returns:
+            Le nombre de secondes manquantes, ou zero si la cadence est tenable ou si
+            le parc n'est pas encore connu.
+        """
+        if not self._collected_site_ids:
+            return 0.0
+
+        needed = len(self._collected_site_ids) * minimum_request_interval_seconds
+        return max(0.0, needed - poll_interval_seconds)
+
     def run(
         self,
         max_cycles: Optional[int] = None,
