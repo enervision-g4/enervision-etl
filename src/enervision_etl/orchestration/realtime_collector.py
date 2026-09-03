@@ -18,9 +18,11 @@ from time import perf_counter
 from types import TracebackType
 from typing import Optional, Protocol
 
+from enervision_contracts.alert import Alert
 from enervision_contracts.energy_reading import EnergyReading
 from enervision_contracts.envelope import (
     CollectionMode,
+    envelope_for_alert,
     envelope_for_imputed_reading,
     envelope_for_raw_reading,
 )
@@ -32,7 +34,7 @@ from ..load.publisher import MessagePublisher
 from ..load.site_registry_publisher import SiteRegistryPublisher
 from ..logging_setup import get_logger
 from ..transform.imputation import impute_series
-from ..transform.normalization import normalize_reading
+from ..transform.normalization import normalize_alert, normalize_reading
 from .drift_free_scheduler import DriftFreeScheduler
 
 logger = get_logger("realtime_collector")
@@ -49,6 +51,10 @@ class SiteReadingSource(Protocol):
         """Renvoie la mesure instantanee d'un site."""
         ...
 
+    def fetch_active_alerts(self) -> list[Alert]:
+        """Renvoie les alertes actives de tout le parc."""
+        ...
+
 
 @dataclass
 class CycleReport:
@@ -59,6 +65,7 @@ class CycleReport:
         null_reasons_counts: Occurrences de chaque cause de valeur manquante.
         failed_sites: Sites dont l'interrogation a echoue.
         published_sites: Sites du referentiel republies pendant ce cycle.
+        published_alert_count: Nombre d'alertes actives publiees pendant ce cycle.
         duration_seconds: Duree du cycle.
     """
 
@@ -66,6 +73,7 @@ class CycleReport:
     null_reasons_counts: dict[str, int] = field(default_factory=dict)
     failed_sites: list[str] = field(default_factory=list)
     published_sites: list[str] = field(default_factory=list)
+    published_alert_count: int = 0
     duration_seconds: float = 0.0
 
 
@@ -79,6 +87,7 @@ class RealtimeCollector:
         site_topic: str,
         measure_raw_topic: str,
         measure_imputed_topic: str,
+        alert_topic: str,
         source_timezone: str,
         max_gap_measures: int,
         site_refresh_interval_seconds: float,
@@ -92,6 +101,7 @@ class RealtimeCollector:
             site_topic: Topic de la table SITE.
             measure_raw_topic: Topic des mesures brutes.
             measure_imputed_topic: Topic des mesures reconstruites.
+            alert_topic: Topic des alertes actives.
             source_timezone: Fuseau suppose des horodatages naifs de l'API.
             max_gap_measures: Longueur maximale d'un trou comblable.
             site_refresh_interval_seconds: Delai entre deux relectures du parc.
@@ -101,6 +111,7 @@ class RealtimeCollector:
         self._publisher = publisher
         self._measure_raw_topic = measure_raw_topic
         self._measure_imputed_topic = measure_imputed_topic
+        self._alert_topic = alert_topic
         self._source_timezone = source_timezone
         self._max_gap_measures = max_gap_measures
         self._configured_sites = list(configured_sites) if configured_sites else []
@@ -195,6 +206,9 @@ class RealtimeCollector:
         report = CycleReport()
 
         report.published_sites = self._refresh_registry_if_due()
+        # Apres le referentiel : une alerte porte une cle etrangere vers son site, que
+        # le consumer doit pouvoir resoudre.
+        self._publish_alerts(report)
 
         for site_id in self._collected_site_ids:
             self._collect_one_site(site_id, report)
@@ -204,6 +218,7 @@ class RealtimeCollector:
             "cycle_termine",
             sites=len(self._collected_site_ids),
             qualite=report.readings_by_quality,
+            alertes=report.published_alert_count,
             echecs=report.failed_sites,
             duree_s=round(report.duration_seconds, 3),
         )
@@ -227,6 +242,27 @@ class RealtimeCollector:
         if published_sites:
             logger.info("referentiel_publie", sites=published_sites)
         return published_sites
+
+    def _publish_alerts(self, report: CycleReport) -> None:
+        """Publie les alertes actives du parc.
+
+        Un seul appel suffit pour tout le parc, la ou les mesures en demandent un par
+        site. Aucun filtrage n'est applique : le topic des alertes n'est pas compacte,
+        et la deduplication des alertes encore actives revient au consumer.
+
+        Args:
+            report: Bilan du cycle, enrichi du nombre d'alertes publiees.
+        """
+        active_alerts = self._api_client.fetch_active_alerts()
+        for alert in active_alerts:
+            self._publisher.publish(
+                self._alert_topic,
+                envelope_for_alert(
+                    normalize_alert(alert, self._source_timezone),
+                    CollectionMode.REALTIME,
+                ),
+            )
+        report.published_alert_count = len(active_alerts)
 
     def _collect_one_site(self, site_id: str, report: CycleReport) -> None:
         """Interroge un site, publie sa mesure et sa reconstruction.
