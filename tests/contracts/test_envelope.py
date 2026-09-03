@@ -5,15 +5,18 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from enervision_contracts.alert import Alert
 from enervision_contracts.energy_reading import EnergyReading
 from enervision_contracts.envelope import (
     SCHEMA_VERSION,
+    AlertPayload,
     CollectionMode,
     EventType,
     MeasureImputedPayload,
     MeasureRawPayload,
     MessageEnvelope,
     SitePayload,
+    envelope_for_alert,
     envelope_for_imputed_reading,
     envelope_for_raw_reading,
     envelope_for_site,
@@ -22,6 +25,7 @@ from enervision_contracts.imputed_reading import ImputationMethod, ImputedReadin
 from enervision_contracts.site import Site
 
 MEASURED_AT = datetime(2024, 6, 15, 14, 32, 0, 123456, tzinfo=UTC)
+ALERT_RAISED_AT = datetime(2024, 6, 15, 14, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -247,3 +251,90 @@ def test_an_imputed_payload_keeps_an_irrecoverable_value_null() -> None:
 
     assert payload.consumption_kw is None
     assert payload.imputation_method == ImputationMethod.NONE
+
+
+@pytest.fixture
+def utc_alert(active_alerts_payload: list[dict[str, Any]]) -> Alert:
+    return Alert.model_validate(active_alerts_payload[0]).model_copy(
+        update={"timestamp": ALERT_RAISED_AT}
+    )
+
+
+def test_an_alert_envelope_carries_the_alert(utc_alert: Alert) -> None:
+    envelope = envelope_for_alert(utc_alert, CollectionMode.REALTIME)
+
+    assert envelope.event_type == EventType.ALERT
+    assert envelope.collection_mode == CollectionMode.REALTIME
+    assert envelope.payload.site_id == "SITE002"
+    assert envelope.payload.severity == "critical"
+    assert envelope.payload.type == "outage"
+
+
+def test_the_alert_field_names_become_the_column_names(utc_alert: Alert) -> None:
+    # L'API nomme ces champs value et threshold, le modele de donnees value_kw et
+    # threshold_kw. Le renommage a lieu ici, une fois, plutot que dans chaque consumer.
+    envelope = envelope_for_alert(utc_alert, CollectionMode.REALTIME)
+
+    assert envelope.payload.value_kw == 812.5
+    assert envelope.payload.threshold_kw == 720.0
+    assert envelope.payload.source_alert_id == "ALR-SITE002-1718458320"
+
+
+def test_the_alert_payload_holds_only_the_columns_of_the_data_model(
+    utc_alert: Alert,
+) -> None:
+    # alert_id est genere a l'insertion par le consumer, comme measure_raw_id : le
+    # producteur ne l'envoie pas.
+    envelope = envelope_for_alert(utc_alert, CollectionMode.REALTIME)
+
+    serialized_payload = json.loads(envelope.model_dump_json())["payload"]
+
+    assert set(serialized_payload) == {
+        "source_alert_id",
+        "timestamp",
+        "site_id",
+        "severity",
+        "type",
+        "message",
+        "value_kw",
+        "threshold_kw",
+    }
+
+
+def test_an_alert_is_partitioned_by_site(utc_alert: Alert) -> None:
+    envelope = envelope_for_alert(utc_alert, CollectionMode.REALTIME)
+
+    assert envelope.partition_key == "SITE002"
+
+
+def test_a_naive_alert_timestamp_is_refused(utc_alert: Alert) -> None:
+    naive_alert = utc_alert.model_copy(
+        update={"timestamp": ALERT_RAISED_AT.replace(tzinfo=None)}
+    )
+
+    with pytest.raises(ValidationError):
+        envelope_for_alert(naive_alert, CollectionMode.REALTIME)
+
+
+def test_an_alert_without_measured_value_keeps_its_nulls(utc_alert: Alert) -> None:
+    # Une alerte dont la mesure manque ne doit pas devenir une alerte a zero kW.
+    unmeasured_alert = utc_alert.model_copy(update={"value": None, "threshold": None})
+
+    serialized_payload = json.loads(
+        envelope_for_alert(unmeasured_alert, CollectionMode.REALTIME).model_dump_json()
+    )["payload"]
+
+    assert serialized_payload["value_kw"] is None
+    assert serialized_payload["threshold_kw"] is None
+
+
+def test_an_alert_envelope_survives_a_full_round_trip(utc_alert: Alert) -> None:
+    envelope = envelope_for_alert(utc_alert, CollectionMode.REALTIME)
+
+    restored = MessageEnvelope[AlertPayload].model_validate_json(
+        envelope.model_dump_json()
+    )
+
+    assert restored.payload.source_alert_id == "ALR-SITE002-1718458320"
+    assert restored.payload.value_kw == 812.5
+    assert restored.payload.timestamp == ALERT_RAISED_AT

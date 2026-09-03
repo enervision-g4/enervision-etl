@@ -11,6 +11,7 @@ from typing import Final, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .alert import Alert
 from .energy_reading import EnergyReading
 from .imputed_reading import ImputationMethod, ImputedReading
 from .site import Site
@@ -111,6 +112,22 @@ class SitePayload(SiteScopedPayload):
     location: str
     capacity_kw: float
     status: str
+
+
+class AlertPayload(TimestampedPayload):
+    """Alerte de consommation relevee sur un site. Alimente ALERT.
+
+    source_alert_id porte l'identifiant attribue par l'API, sur lequel repose
+    l'idempotence de l'insertion. alert_id, lui, est genere a l'insertion par le
+    consumer et ne circule donc pas sur le bus.
+    """
+
+    source_alert_id: str
+    severity: str
+    type: str
+    message: str
+    value_kw: Optional[float] = None
+    threshold_kw: Optional[float] = None
 
 
 class MessageEnvelope[PayloadT: SiteScopedPayload](BaseModel):
@@ -233,5 +250,41 @@ def envelope_for_site(site: Site) -> MessageEnvelope[SitePayload]:
             location=site.location,
             capacity_kw=site.capacity_kw,
             status=site.status,
+        ),
+    )
+
+
+def envelope_for_alert(
+    alert: Alert,
+    collection_mode: CollectionMode,
+) -> MessageEnvelope[AlertPayload]:
+    """Emballe une alerte pour publication.
+
+    Les champs value et threshold de l'API deviennent value_kw et threshold_kw, noms des
+    colonnes cibles. Ce renommage a lieu ici pour qu'aucun consumer n'ait a le refaire.
+
+    Args:
+        alert: Alerte normalisee, dont l'horodatage porte deja son fuseau.
+        collection_mode: Mode de collecte ayant releve cette alerte.
+
+    Returns:
+        Le message pret a serialiser.
+
+    Raises:
+        ValidationError: Si l'horodatage de l'alerte est naif.
+    """
+    return MessageEnvelope[AlertPayload](
+        event_type=EventType.ALERT,
+        produced_at=_now(),
+        collection_mode=collection_mode,
+        payload=AlertPayload(
+            site_id=alert.site_id,
+            timestamp=alert.timestamp,
+            source_alert_id=alert.alert_id,
+            severity=alert.severity,
+            type=alert.type,
+            message=alert.message,
+            value_kw=alert.value,
+            threshold_kw=alert.threshold,
         ),
     )
