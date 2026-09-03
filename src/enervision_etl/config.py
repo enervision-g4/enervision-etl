@@ -40,7 +40,8 @@ class EtlSettings(BaseSettings):
             des sites. Une republication n'a lieu que si un site a change.
         sites: Identifiants des sites a collecter. Une liste vide, absente ou
             reduite au mot ALL demande la collecte de tout le parc expose par l'API.
-        kafka_bootstrap_servers: Broker Kafka du conteneur messager-consumer.
+        kafka_bootstrap_servers: Adresse du broker. Obligatoire uniquement si
+            publisher_target vaut kafka.
         kafka_topic_site: Topic de la liste des sites, alimentant la table SITE.
             A creer avec une politique de compaction.
         kafka_topic_measure_raw: Topic alimentant la table MEASURE_RAW.
@@ -71,7 +72,9 @@ class EtlSettings(BaseSettings):
     site_refresh_interval_seconds: float = Field(default=3600.0, gt=0)
     sites: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
-    kafka_bootstrap_servers: str = Field(min_length=1)
+    # Exigee seulement si la destination est kafka : publier sur stdout ne demande
+    # aucun broker, et en reclamer un empecherait de developper sans infrastructure.
+    kafka_bootstrap_servers: str = ""
     # Un topic par table du MCD, ce qui rend la destination de chaque message lisible
     # sans documentation et aligne les deux depots sur un vocabulaire unique.
     kafka_topic_site: str = "enervision.site"
@@ -178,6 +181,22 @@ class EtlSettings(BaseSettings):
         if len(site_identifiers) == 1 and site_identifiers[0].upper() == EVERY_SITE_WILDCARD:
             return []
         return site_identifiers
+
+    @model_validator(mode="after")
+    def require_a_broker_only_when_publishing_to_kafka(self) -> "EtlSettings":
+        """Refuse une destination Kafka sans adresse de broker.
+
+        Returns:
+            La configuration inchangee.
+
+        Raises:
+            ValueError: Si publisher_target vaut kafka sans broker renseigne.
+        """
+        if self.publisher_target is PublisherTarget.KAFKA and not self.kafka_bootstrap_servers:
+            raise ValueError(
+                "KAFKA_BOOTSTRAP_SERVERS is required when PUBLISHER_TARGET is kafka"
+            )
+        return self
 
     @property
     def collects_every_site(self) -> bool:

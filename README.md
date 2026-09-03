@@ -61,7 +61,7 @@ cp .env.example .env
 | `POLL_INTERVAL_SECONDS` | Periode du collecteur temps reel |
 | `SITE_REFRESH_INTERVAL_SECONDS` | Delai entre deux verifications du referentiel |
 | `SITES` | Vide ou `ALL` pour tout le parc, sinon liste separee par des virgules |
-| `KAFKA_BOOTSTRAP_SERVERS` | Broker Kafka du conteneur messager-consumer |
+| `KAFKA_BOOTSTRAP_SERVERS` | Adresse du broker, obligatoire seulement si `PUBLISHER_TARGET=kafka` |
 | `KAFKA_TOPIC_SITE` | Topic alimentant la table `SITE`, a politique de compaction |
 | `KAFKA_TOPIC_MEASURE_RAW` | Topic alimentant la table `MEASURE_RAW` |
 | `KAFKA_TOPIC_MEASURE_IMPUTED` | Topic alimentant la table `MEASURE_IMPUTED` |
