@@ -7,7 +7,7 @@ immediatement plutot qu'apres plusieurs minutes de fonctionnement.
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ACCEPTED_URL_SCHEMES = ("http://", "https://")
@@ -82,6 +82,32 @@ class EtlSettings(BaseSettings):
 
     metrics_port: int = Field(default=8001, gt=0, le=65535)
     imputation_max_gap_measures: int = Field(default=3, gt=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_surrounding_whitespace(
+        cls,
+        submitted_values: dict[str, object],
+    ) -> dict[str, object]:
+        """Retire les espaces et retours chariot autour de chaque valeur.
+
+        Un fichier .env enregistre sous Windows termine ses lignes par un retour
+        chariot, que docker transmet tel quel dans l'environnement du conteneur. Le
+        nettoyage doit intervenir avant toute validation : une destination suivie d'un
+        retour chariot serait confrontee a l'enumeration et rejetee sans raison lisible.
+
+        Args:
+            submitted_values: Valeurs brutes issues de l'environnement.
+
+        Returns:
+            Les memes valeurs, chaines nettoyees.
+        """
+        if not isinstance(submitted_values, dict):
+            return submitted_values
+        return {
+            name: value.strip() if isinstance(value, str) else value
+            for name, value in submitted_values.items()
+        }
 
     @field_validator("api_mock_base_url")
     @classmethod

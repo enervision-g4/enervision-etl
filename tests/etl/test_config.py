@@ -189,6 +189,23 @@ def test_an_explicit_list_restricts_the_collection(
     assert settings.collects_every_site is False
 
 
+def test_windows_line_endings_do_not_corrupt_values(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
+    # docker --env-file transmet le retour chariot d'un fichier enregistre sous Windows.
+    for variable_name, value in MINIMAL_ENVIRONMENT.items():
+        isolated_environment.setenv(variable_name, value + "\r")
+    isolated_environment.setenv("PUBLISHER_TARGET", "stdout\r")
+    isolated_environment.setenv("SITES", "SITE001,SITE002\r")
+
+    settings = build_settings()
+
+    assert settings.api_mock_base_url == "http://192.0.2.10:8000"
+    assert settings.kafka_bootstrap_servers == "kafka:9092"
+    assert settings.publisher_target == "stdout"
+    assert settings.sites == ["SITE001", "SITE002"]
+
+
 def test_base_url_without_http_scheme_is_rejected(
     isolated_environment: pytest.MonkeyPatch,
 ) -> None:
