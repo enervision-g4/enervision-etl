@@ -5,6 +5,7 @@ des messages est choisie par configuration, ce qui permet de dérouler toute la 
 sur la sortie standard avant qu'un broker existe.
 """
 
+import sys
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
@@ -29,6 +30,19 @@ application = typer.Typer(
     pretty_exceptions_enable=False,
 )
 logger = get_logger("cli")
+
+
+def _force_utf8_output() -> None:
+    """Impose l'UTF-8 sur les sorties, quel que soit le systeme.
+
+    Les noms de sites contiennent des accents. Sous Windows, l'encodage de sortie suit
+    la page de code de la console, qui n'est pas UTF-8 par defaut : les messages
+    ecrits dans un fichier seraient alors illisibles pour le consumer.
+    """
+    for flux in (sys.stdout, sys.stderr):
+        reconfigure = getattr(flux, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
 
 
 def _build_publisher(settings: EtlSettings) -> MessagePublisher:
@@ -56,6 +70,7 @@ def collect_realtime(
     Args:
         cycles: Nombre de cycles a executer, illimite si absent.
     """
+    _force_utf8_output()
     settings = load_settings()
     configure_logging(settings.log_level, settings.log_as_json)
 
@@ -110,6 +125,7 @@ def backfill(
         resolution: Ecart vise entre deux mesures, en secondes.
         force_degenerate: Vrai pour publier malgre le garde fou.
     """
+    _force_utf8_output()
     settings = load_settings()
     configure_logging(settings.log_level, settings.log_as_json)
 
