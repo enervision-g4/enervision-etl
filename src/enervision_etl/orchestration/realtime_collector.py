@@ -66,6 +66,8 @@ class CycleReport:
         failed_sites: Sites dont l'interrogation a echoue.
         published_sites: Sites du referentiel republies pendant ce cycle.
         published_alert_count: Nombre d'alertes actives publiees pendant ce cycle.
+        alerts_endpoint_failed: Vrai si les alertes n'ont pas pu etre relevees. Zero
+            alerte publiee ne signifie alors pas que le parc est sain.
         duration_seconds: Duree du cycle.
     """
 
@@ -74,6 +76,7 @@ class CycleReport:
     failed_sites: list[str] = field(default_factory=list)
     published_sites: list[str] = field(default_factory=list)
     published_alert_count: int = 0
+    alerts_endpoint_failed: bool = False
     duration_seconds: float = 0.0
 
 
@@ -219,6 +222,7 @@ class RealtimeCollector:
             sites=len(self._collected_site_ids),
             qualite=report.readings_by_quality,
             alertes=report.published_alert_count,
+            alertes_injoignables=report.alerts_endpoint_failed,
             echecs=report.failed_sites,
             duree_s=round(report.duration_seconds, 3),
         )
@@ -250,10 +254,20 @@ class RealtimeCollector:
         site. Aucun filtrage n'est applique : le topic des alertes n'est pas compacte,
         et la deduplication des alertes encore actives revient au consumer.
 
+        Une panne de cet endpoint reste circonscrite : elle est journalisee et le
+        cycle continue, sans quoi un seul service muet priverait tout le parc de ses
+        mesures.
+
         Args:
             report: Bilan du cycle, enrichi du nombre d'alertes publiees.
         """
-        active_alerts = self._api_client.fetch_active_alerts()
+        try:
+            active_alerts = self._api_client.fetch_active_alerts()
+        except MockApiError as failure:
+            report.alerts_endpoint_failed = True
+            logger.warning("alertes_injoignables", cause=str(failure))
+            return
+
         for alert in active_alerts:
             self._publisher.publish(
                 self._alert_topic,

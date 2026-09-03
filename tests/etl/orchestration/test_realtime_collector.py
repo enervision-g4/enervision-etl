@@ -55,16 +55,20 @@ class ScriptedApiClient:
         registry: list[Site],
         readings_by_site: dict[str, list[Any]],
         alerts: Optional[list[Alert]] = None,
+        alerts_failure: Optional[Exception] = None,
     ) -> None:
         self._registry = registry
         self._readings_by_site = {site_id: list(v) for site_id, v in readings_by_site.items()}
         self._alerts = list(alerts) if alerts is not None else []
+        self._alerts_failure = alerts_failure
         self.registry_calls = 0
         self.current_calls: list[str] = []
         self.alert_calls = 0
 
     def fetch_active_alerts(self) -> list[Alert]:
         self.alert_calls += 1
+        if self._alerts_failure is not None:
+            raise self._alerts_failure
         return list(self._alerts)
 
     def fetch_site_registry(self) -> list[Site]:
@@ -561,3 +565,52 @@ def test_the_cycle_report_counts_the_published_alerts(
     report = build_collector(api_client, publisher).run_cycle()
 
     assert report.published_alert_count == 2
+
+
+def test_an_unreachable_alerts_endpoint_never_interrupts_the_measures(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Un seul endpoint muet ne doit pas priver tout le parc de ses mesures, au meme
+    # titre qu'un site injoignable n'interrompt pas la collecte des autres.
+    api_client = ScriptedApiClient(
+        registry,
+        nominal_readings(),
+        alerts_failure=MockApiUnavailableError("/api/v1/alerts"),
+    )
+
+    report = build_collector(api_client, publisher).run_cycle()
+
+    assert len(publisher.payloads_on(MEASURE_TOPIC)) == 2
+    assert len(publisher.payloads_on(IMPUTED_TOPIC)) == 2
+    assert report.failed_sites == []
+
+
+def test_an_unreachable_alerts_endpoint_is_reported(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry,
+        nominal_readings(),
+        alerts_failure=MockApiUnavailableError("/api/v1/alerts"),
+    )
+
+    report = build_collector(api_client, publisher).run_cycle()
+
+    assert report.alerts_endpoint_failed
+    # Zero alerte publiee n'est pas la meme chose qu'un parc sain : le drapeau
+    # ci-dessus est le seul moyen pour l'aval de faire la difference.
+    assert report.published_alert_count == 0
+    assert publisher.payloads_on(ALERT_TOPIC) == []
+
+
+def test_a_healthy_alerts_endpoint_raises_no_flag(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(registry, nominal_readings(), alerts=[])
+
+    report = build_collector(api_client, publisher).run_cycle()
+
+    assert not report.alerts_endpoint_failed
