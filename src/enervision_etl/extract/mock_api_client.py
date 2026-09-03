@@ -11,7 +11,7 @@ from typing import Any, Final, Optional
 from enervision_contracts.energy_reading import EnergyReading
 from enervision_contracts.site import Site
 
-from .errors import MockApiError
+from .errors import MockApiError, WindowTooLargeError
 from .http_client import ResilientHttpClient
 
 # Plafond de /api/v1/readings, verifie sur l'instance : au dela, l'API repond 422.
@@ -20,7 +20,7 @@ MAX_READINGS_PER_REQUEST: Final[int] = 1000
 # Resolution par defaut, alignee sur la periode de polling du collecteur temps reel.
 DEFAULT_RESOLUTION_SECONDS: Final[float] = 60.0
 
-# Garde fou : borne le nombre de tranches pour une periode demesuree.
+# Borne le nombre de tranches. Une periode plus longue est refusee, jamais tronquee.
 MAX_CHUNKS_PER_WINDOW: Final[int] = 500
 
 
@@ -125,6 +125,7 @@ class MockApiClient:
         Raises:
             ValueError: Si resolution_seconds n'est pas strictement positif, ou si
                 start_time est posterieur a end_time.
+            WindowTooLargeError: Si la periode depasse ce que le decoupage couvre.
             SiteNotFoundError: Si le site est inconnu de l'API.
         """
         if resolution_seconds <= 0:
@@ -141,9 +142,18 @@ class MockApiClient:
         already_collected_timestamps: set[datetime] = set()
         chunk_start_time = start_time
 
-        for _ in range(MAX_CHUNKS_PER_WINDOW):
-            if chunk_start_time >= end_time:
-                break
+        fetched_chunks = 0
+        while chunk_start_time < end_time:
+            if fetched_chunks >= MAX_CHUNKS_PER_WINDOW:
+                # Rendre un historique tronque serait pire qu'un echec : l'aval le
+                # prendrait pour complet et les mesures manquantes passeraient inapercues.
+                raise WindowTooLargeError(
+                    requested_hours=(end_time - start_time).total_seconds() / 3600,
+                    coverable_hours=(
+                        chunk_duration.total_seconds() * MAX_CHUNKS_PER_WINDOW / 3600
+                    ),
+                )
+
             chunk_end_time = min(chunk_start_time + chunk_duration, end_time)
             requested_points = self._points_for_chunk(
                 chunk_start_time, chunk_end_time, resolution_seconds
@@ -159,6 +169,7 @@ class MockApiClient:
                 collected_readings.append(reading)
 
             chunk_start_time = chunk_end_time
+            fetched_chunks += 1
 
         collected_readings.sort(key=lambda reading: reading.timestamp)
         return collected_readings

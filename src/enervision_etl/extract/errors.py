@@ -69,3 +69,29 @@ class MockApiUnavailableError(MockApiError):
         )
         self.endpoint = endpoint
         self.cause = cause
+
+
+class WindowTooLargeError(MockApiError):
+    """La periode demandee depasse ce que le decoupage peut couvrir.
+
+    Renvoyer une serie tronquee serait pire qu'un echec : l'aval la prendrait pour
+    l'historique complet et les mesures manquantes passeraient inapercues.
+
+    Attributes:
+        requested_hours: Duree demandee, en heures.
+        coverable_hours: Duree couvrable a la resolution demandee, en heures.
+    """
+
+    def __init__(self, requested_hours: float, coverable_hours: float) -> None:
+        """Construit l'erreur pour une periode trop longue.
+
+        Args:
+            requested_hours: Duree demandee, en heures.
+            coverable_hours: Duree couvrable a la resolution demandee, en heures.
+        """
+        super().__init__(
+            f"requested window of {requested_hours:.1f} h exceeds the {coverable_hours:.1f} h "
+            "coverable at this resolution: narrow the window or coarsen the resolution"
+        )
+        self.requested_hours = requested_hours
+        self.coverable_hours = coverable_hours
