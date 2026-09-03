@@ -7,7 +7,8 @@ from urllib.parse import parse_qsl, urlparse
 import pytest
 import responses
 
-from enervision_etl.extract.errors import SiteNotFoundError
+from enervision_etl.extract import mock_api_client
+from enervision_etl.extract.errors import SiteNotFoundError, WindowTooLargeError
 from enervision_etl.extract.http_client import ResilientHttpClient
 from enervision_etl.extract.mock_api_client import (
     MAX_READINGS_PER_REQUEST,
@@ -317,3 +318,48 @@ def test_health_check_reports_a_healthy_service(api_client: MockApiClient) -> No
     )
 
     assert api_client.is_healthy() is True
+
+
+@responses.activate
+def test_a_window_beyond_the_chunking_capacity_is_refused(
+    api_client: MockApiClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Rendre une serie tronquee serait pire qu'un echec : l'aval la prendrait pour
+    # l'historique complet et les mesures manquantes passeraient inapercues.
+    # Le plafond est abaisse pour eprouver la limite sans collecter un demi million
+    # de mesures dans un test unitaire.
+    monkeypatch.setattr(mock_api_client, "MAX_CHUNKS_PER_WINDOW", 2)
+    register_simulated_readings_endpoint()
+    resolution_seconds = 60.0
+    chunk_duration = timedelta(seconds=resolution_seconds * MAX_READINGS_PER_REQUEST)
+
+    with pytest.raises(WindowTooLargeError) as raised:
+        api_client.fetch_readings_window(
+            "SITE002",
+            WINDOW_START,
+            WINDOW_START + chunk_duration * 3,
+            resolution_seconds=resolution_seconds,
+        )
+
+    assert raised.value.coverable_hours < raised.value.requested_hours
+
+
+@responses.activate
+def test_a_window_at_the_chunking_capacity_is_accepted(
+    api_client: MockApiClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mock_api_client, "MAX_CHUNKS_PER_WINDOW", 2)
+    register_simulated_readings_endpoint()
+    resolution_seconds = 60.0
+    chunk_duration = timedelta(seconds=resolution_seconds * MAX_READINGS_PER_REQUEST)
+
+    readings = api_client.fetch_readings_window(
+        "SITE002",
+        WINDOW_START,
+        WINDOW_START + chunk_duration * 2,
+        resolution_seconds=resolution_seconds,
+    )
+
+    assert len(readings) == 2 * MAX_READINGS_PER_REQUEST

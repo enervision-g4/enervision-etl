@@ -2,8 +2,14 @@
 
 Session reutilisee, delai d'attente explicite sur chaque requete, rejeu limite aux
 pannes transitoires, et traduction des codes HTTP en exceptions metier distinctes.
+
+Un espacement minimal entre requetes peut etre impose : l'instance mock se degrade
+lorsqu'on l'interroge en rafale, et renvoie alors des series entierement nulles qu'on
+prendrait a tort pour des pannes de capteurs.
 """
 
+import time
+from collections.abc import Callable
 from types import TracebackType
 from typing import Any, Final, Optional
 
@@ -68,6 +74,9 @@ class ResilientHttpClient:
         session: Optional[requests.Session] = None,
         total_retries: int = DEFAULT_TOTAL_RETRIES,
         backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
+        minimum_interval_seconds: float = 0.0,
+        monotonic: Optional[Callable[[], float]] = None,
+        sleep: Optional[Callable[[float], None]] = None,
     ) -> None:
         """Prepare le client pour une instance donnee de l'API mock.
 
@@ -77,7 +86,24 @@ class ResilientHttpClient:
             session: Session a reutiliser, creee par defaut si omise.
             total_retries: Nombre maximal de tentatives supplementaires.
             backoff_factor: Facteur de la temporisation exponentielle.
+            minimum_interval_seconds: Espacement minimal entre deux requetes. Zero
+                pour n'imposer aucun rythme.
+            monotonic: Source de temps monotone, injectee par les tests.
+            sleep: Fonction d'attente, injectee par les tests.
+
+        Raises:
+            ValueError: Si minimum_interval_seconds est negatif.
         """
+        if minimum_interval_seconds < 0:
+            raise ValueError(
+                "minimum_interval_seconds must not be negative, "
+                f"received {minimum_interval_seconds}"
+            )
+
+        self._minimum_interval_seconds = minimum_interval_seconds
+        self._monotonic = monotonic if monotonic is not None else time.monotonic
+        self._sleep = sleep if sleep is not None else time.sleep
+        self._last_request_at: Optional[float] = None
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._session = session if session is not None else build_http_session(
@@ -108,6 +134,7 @@ class ResilientHttpClient:
             InvalidRequestParameterError: Si l'API repond 422.
             MockApiUnavailableError: Si l'API repond 5xx ou reste injoignable.
         """
+        self._wait_for_the_minimum_interval()
         try:
             response = self._session.get(
                 f"{self._base_url}{endpoint}",
@@ -126,6 +153,19 @@ class ResilientHttpClient:
 
         response.raise_for_status()
         return response.json()
+
+    def _wait_for_the_minimum_interval(self) -> None:
+        """Espace la requete a venir de la precedente, si un rythme est impose."""
+        if self._minimum_interval_seconds <= 0:
+            return
+
+        now = self._monotonic()
+        if self._last_request_at is not None:
+            remaining = self._minimum_interval_seconds - (now - self._last_request_at)
+            if remaining > 0:
+                self._sleep(remaining)
+                now = self._monotonic()
+        self._last_request_at = now
 
     def close(self) -> None:
         """Ferme la session HTTP et libere les connexions maintenues ouvertes."""

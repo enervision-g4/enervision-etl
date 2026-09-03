@@ -355,3 +355,116 @@ def test_timestamps_are_normalized_to_utc(
     published = publisher.payloads_on(MEASURE_TOPIC)[0]
     assert published.timestamp == datetime(2026, 9, 2, 10, 0, tzinfo=UTC)
     assert published.timestamp.utcoffset() == timedelta(0)
+
+
+def test_the_loop_stops_when_a_shutdown_is_requested(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry,
+        {
+            "SITE001": [build_reading("SITE001", m, 100.0) for m in range(5)],
+            "SITE002": [build_reading("SITE002", m, 500.0) for m in range(5)],
+        },
+    )
+    collector = build_collector(api_client, publisher)
+    sites_per_cycle = 2
+    wanted_cycles = 2
+
+    reports = collector.run(
+        interval_seconds=0.001,
+        should_stop=lambda: len(api_client.current_calls) >= sites_per_cycle * wanted_cycles,
+    )
+
+    assert len(reports) == wanted_cycles
+
+
+def test_a_started_cycle_always_completes_before_stopping(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Interrompre au milieu publierait une photo partielle du parc.
+    api_client = ScriptedApiClient(
+        registry,
+        {"SITE001": [build_reading("SITE001", 0, 100.0)],
+         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+    )
+    collector = build_collector(api_client, publisher)
+
+    collector.run(
+        interval_seconds=0.001,
+        should_stop=lambda: len(api_client.current_calls) >= 1,
+    )
+
+    assert len(publisher.payloads_on(MEASURE_TOPIC)) == 2
+
+
+def test_a_shutdown_during_the_wait_prevents_one_more_cycle(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Un signal recu pendant l'attente doit sortir sans lancer de cycle supplementaire,
+    # sinon docker envoie SIGKILL avant que le processus n'ait reagi.
+    api_client = ScriptedApiClient(
+        registry,
+        {
+            "SITE001": [build_reading("SITE001", m, 100.0) for m in range(5)],
+            "SITE002": [build_reading("SITE002", m, 500.0) for m in range(5)],
+        },
+    )
+    collector = build_collector(api_client, publisher)
+    shutdown_after_first_cycle = False
+
+    def should_stop() -> bool:
+        return shutdown_after_first_cycle or len(api_client.current_calls) >= 2
+
+    reports = collector.run(interval_seconds=5.0, should_stop=should_stop)
+
+    assert len(reports) == 1
+
+
+def test_an_unreachable_cadence_is_reported_at_startup(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Avec 2 sites espaces de 40 s, un cycle dure 80 s : il ne peut pas tenir dans 60 s.
+    api_client = ScriptedApiClient(
+        registry,
+        {"SITE001": [build_reading("SITE001", 0, 100.0)],
+         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+    )
+    collector = build_collector(api_client, publisher)
+    collector.run_cycle()
+
+    infeasible = collector.cadence_shortfall_seconds(
+        poll_interval_seconds=60.0,
+        minimum_request_interval_seconds=40.0,
+    )
+
+    assert infeasible == pytest.approx(20.0)
+
+
+def test_a_reachable_cadence_reports_no_shortfall(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry,
+        {"SITE001": [build_reading("SITE001", 0, 100.0)],
+         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+    )
+    collector = build_collector(api_client, publisher)
+    collector.run_cycle()
+
+    assert collector.cadence_shortfall_seconds(60.0, 2.0) == 0.0
+
+
+def test_the_cadence_cannot_be_judged_before_the_park_is_known(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(registry, {})
+    collector = build_collector(api_client, publisher)
+
+    assert collector.cadence_shortfall_seconds(60.0, 40.0) == 0.0

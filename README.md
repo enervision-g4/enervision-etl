@@ -57,10 +57,11 @@ cp .env.example .env
 | `API_MOCK_BASE_URL` | URL de l'API Mock, schema `http://` ou `https://` obligatoire |
 | `API_MOCK_TIMEOUT_SECONDS` | Delai d'attente applique a chaque requete |
 | `API_MOCK_SOURCE_TIMEZONE` | Fuseau suppose des horodatages naifs renvoyes par l'API |
+| `API_MOCK_MIN_REQUEST_INTERVAL_SECONDS` | Espacement minimal entre deux requetes |
 | `POLL_INTERVAL_SECONDS` | Periode du collecteur temps reel |
 | `SITE_REFRESH_INTERVAL_SECONDS` | Delai entre deux verifications du referentiel |
 | `SITES` | Vide ou `ALL` pour tout le parc, sinon liste separee par des virgules |
-| `KAFKA_BOOTSTRAP_SERVERS` | Broker Kafka du conteneur messager-consumer |
+| `KAFKA_BOOTSTRAP_SERVERS` | Adresse du broker, obligatoire seulement si `PUBLISHER_TARGET=kafka` |
 | `KAFKA_TOPIC_SITE` | Topic alimentant la table `SITE`, a politique de compaction |
 | `KAFKA_TOPIC_MEASURE_RAW` | Topic alimentant la table `MEASURE_RAW` |
 | `KAFKA_TOPIC_MEASURE_IMPUTED` | Topic alimentant la table `MEASURE_IMPUTED` |
@@ -127,10 +128,33 @@ uv run enervision-etl backfill --site SITE002 --hours 6 > messages.jsonl
 ```
 
 Ce fichier reproduit ce que Kafka transporterait, et sert de jeu d'essai aux consumers.
+Pour en tirer un bilan lisible plutot que de relire les lignes une a une :
+
+```bash
+uv run python scripts/inspect_message_stream.py messages.jsonl
+```
 
 Une fenetre integralement nulle est refusee : ce n'est pas un historique mais l'etat
 d'une panne au moment de l'appel, projete sur toute la periode. `--force-degenerate`
 passe outre.
+
+## Conteneurisation
+
+L'image est construite en deux etapes : `uv` installe les dependances figees par
+`uv.lock`, puis l'etape finale ne conserve que l'environnement resolu, sans outil de
+construction. Le processus tourne sous un utilisateur dedie, jamais en root.
+
+```bash
+docker build -t enervision-etl .
+docker run --rm --env-file .env enervision-etl collect-realtime --cycles 1
+```
+
+Le conteneur traite `SIGTERM` : `docker stop` laisse le cycle en cours se terminer,
+puis vide la file de publication avant de rendre la main. Sans cela, les messages en
+attente seraient perdus a chaque redemarrage.
+
+Le fichier compose n'est pas ici mais dans `enervision-devops`, a
+`compose/etl.yml`, avec ceux des autres services.
 
 ## Verification
 
@@ -171,7 +195,7 @@ contre une instance, il faut verifier que cette instance correspond bien au
 contrat documente.
 
 ```bash
-uv run python scripts/sonde_api.py
+uv run python scripts/probe_api_contract.py
 ```
 
 La sonde compare la liste des sites exposes a la variable `SITES`, valide chaque
@@ -194,10 +218,10 @@ src/
     load/                 publication vers Kafka
   enervision_consumer/    consumers de persistance et d'alerting
 scripts/
-  sonde_api.py            controle de conformite d'une instance de l'API Mock
-  diagnostic_readings.py  caracterisation de l'endpoint historique
-  demo_imputation.py      justesse de l'imputation sur donnees reelles
-  bilan_strategies.py     comparaison des strategies sur l'ensemble du parc
+  probe_api_contract.py            controle de conformite d'une instance de l'API Mock
+  diagnose_readings_endpoint.py  caracterisation de l'endpoint historique
+  measure_imputation_accuracy.py      justesse de l'imputation sur donnees reelles
+  compare_imputation_strategies.py     comparaison des strategies sur l'ensemble du parc
 tests/
   conftest.py             fixtures partagees
   fixtures/               les quatre cas de qualite : good, partial, degraded, critical

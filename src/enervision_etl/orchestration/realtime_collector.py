@@ -12,7 +12,7 @@ Le referentiel n'est relu qu'a intervalle configure, et republie seulement s'il 
 """
 
 from collections import Counter, deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from time import perf_counter
 from types import TracebackType
@@ -115,16 +115,47 @@ class RealtimeCollector:
         # Fenetre glissante par site : de quoi ancrer une recopie sans jamais grossir.
         self._recent_readings: dict[str, deque[EnergyReading]] = {}
 
+    def cadence_shortfall_seconds(
+        self,
+        poll_interval_seconds: float,
+        minimum_request_interval_seconds: float,
+    ) -> float:
+        """Mesure de combien la periode demandee est trop courte pour le parc collecte.
+
+        Interroger N sites en respectant un espacement minimal prend N fois cet
+        espacement. Si ce total depasse la periode, le collecteur ne tiendra jamais sa
+        cadence : autant le dire au demarrage plutot que de laisser l'exploitant
+        decouvrir des cycles sautes.
+
+        Args:
+            poll_interval_seconds: Periode visee entre deux cycles.
+            minimum_request_interval_seconds: Espacement impose entre deux requetes.
+
+        Returns:
+            Le nombre de secondes manquantes, ou zero si la cadence est tenable ou si
+            le parc n'est pas encore connu.
+        """
+        if not self._collected_site_ids:
+            return 0.0
+
+        needed = len(self._collected_site_ids) * minimum_request_interval_seconds
+        return max(0.0, needed - poll_interval_seconds)
+
     def run(
         self,
         max_cycles: Optional[int] = None,
         interval_seconds: float = 60.0,
+        should_stop: Optional[Callable[[], bool]] = None,
     ) -> list[CycleReport]:
         """Execute la boucle de collecte.
+
+        L'arret est verifie entre deux cycles, jamais au milieu : un cycle entame va
+        toujours a son terme, ce qui evite de publier une photo partielle du parc.
 
         Args:
             max_cycles: Nombre de cycles a executer, illimite si None.
             interval_seconds: Periode visee entre deux cycles.
+            should_stop: Consulte avant chaque cycle pour interrompre la boucle.
 
         Returns:
             Le bilan de chaque cycle execute.
@@ -133,7 +164,17 @@ class RealtimeCollector:
         reports: list[CycleReport] = []
 
         while max_cycles is None or len(reports) < max_cycles:
-            tick = scheduler.wait_for_next_tick()
+            if should_stop is not None and should_stop():
+                logger.info("boucle_interrompue", cycles=len(reports))
+                break
+
+            tick = scheduler.wait_for_next_tick(should_stop)
+
+            # Un signal recu pendant l'attente doit sortir sans lancer un cycle de plus.
+            if should_stop is not None and should_stop():
+                logger.info("boucle_interrompue", cycles=len(reports))
+                break
+
             if tick.skipped_ticks:
                 logger.warning(
                     "cycles_sautes",

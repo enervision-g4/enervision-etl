@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from math import floor
 from typing import Optional
 
+SHUTDOWN_CHECK_INTERVAL_SECONDS = 0.25
+"""Finesse de l'attente : delai maximal entre un signal et sa prise en compte."""
+
 
 @dataclass(frozen=True)
 class SchedulerTick:
@@ -60,13 +63,23 @@ class DriftFreeScheduler:
         self._anchor: Optional[float] = None
         self._next_index = 0
 
-    def wait_for_next_tick(self) -> SchedulerTick:
+    def wait_for_next_tick(
+        self,
+        should_stop: Optional[Callable[[], bool]] = None,
+    ) -> SchedulerTick:
         """Attend le prochain declenchement et le decrit.
 
         Le premier appel rend la main immediatement : un collecteur doit produire des
         son demarrage. Si le cycle precedent a deborde d'une ou plusieurs periodes, les
         declenchements manques sont abandonnes plutot qu'empiles, faute de quoi la
         boucle tournerait en continu pour rattraper un retard deja pris.
+
+        L'attente est fractionnee et consulte should_stop entre deux fractions. Sans
+        cela, un signal recu au debut d'une periode ne serait vu qu'a la fin, et docker
+        aurait le temps d'envoyer SIGKILL avant que le processus ne reagisse.
+
+        Args:
+            should_stop: Consulte pendant l'attente pour l'ecourter.
 
         Returns:
             Le tick declenche, avec son rang, les ticks sautes et le retard constate.
@@ -81,7 +94,7 @@ class DriftFreeScheduler:
         remaining_seconds = scheduled_at - now
 
         if remaining_seconds > 0:
-            self._sleep(remaining_seconds)
+            self._sleep_in_slices(remaining_seconds, should_stop)
             tick = SchedulerTick(
                 index=self._next_index, skipped_ticks=0, lateness_seconds=0.0
             )
@@ -99,3 +112,26 @@ class DriftFreeScheduler:
             skipped_ticks=skipped_ticks,
             lateness_seconds=lateness_seconds,
         )
+
+    def _sleep_in_slices(
+        self,
+        total_seconds: float,
+        should_stop: Optional[Callable[[], bool]],
+    ) -> None:
+        """Attend en fractions, en s'interrompant des qu'un arret est demande.
+
+        Args:
+            total_seconds: Duree totale a attendre.
+            should_stop: Consulte entre deux fractions.
+        """
+        if should_stop is None:
+            self._sleep(total_seconds)
+            return
+
+        remaining = total_seconds
+        while remaining > 0:
+            if should_stop():
+                return
+            slice_seconds = min(SHUTDOWN_CHECK_INTERVAL_SECONDS, remaining)
+            self._sleep(slice_seconds)
+            remaining -= slice_seconds

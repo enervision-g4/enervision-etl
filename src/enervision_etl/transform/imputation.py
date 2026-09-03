@@ -22,7 +22,7 @@ DEFAULT_IMPUTATION_METHOD: Final[ImputationMethod] = ImputationMethod.LINEAR_INT
 # Hypothese de l'equipe, et non consigne : un site a consommation reputee stable
 # gagnerait moins a l'interpolation. Non confirmee par la mesure, le mock generant des
 # marches aleatoires et n'ayant fourni que douze trous exploitables sur tout le parc.
-# Reproductible avec scripts/bilan_strategies.py. La table reste donc une hypothese de
+# Reproductible avec scripts/compare_imputation_strategies.py. La table reste donc une hypothese de
 # travail, modifiable et surchargeable via overrides. Le critere reellement determinant
 # est ailleurs : sans la mesure suivante, seule la recopie est applicable.
 IMPUTATION_METHOD_BY_SITE_TYPE: Final[dict[str, ImputationMethod]] = {
