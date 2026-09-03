@@ -150,3 +150,40 @@ def test_a_cycle_lasting_exactly_one_period_skips_nothing(
 def test_a_non_positive_interval_is_rejected(invalid_interval: float) -> None:
     with pytest.raises(ValueError):
         DriftFreeScheduler(interval_seconds=invalid_interval)
+
+
+def test_the_wait_is_cut_short_when_a_stop_is_requested(
+    scheduler: DriftFreeScheduler,
+    clock: ControlledClock,
+) -> None:
+    # Sans fractionnement, un signal recu au debut d'une periode ne serait vu qu'a la
+    # fin : docker enverrait SIGKILL avant que le processus n'ait reagi.
+    scheduler.wait_for_next_tick()
+    stop_after = 1.0
+
+    scheduler.wait_for_next_tick(should_stop=lambda: clock.elapsed >= stop_after)
+
+    assert clock.elapsed < 2.0
+    assert sum(clock.sleep_durations) < 2.0
+
+
+def test_the_full_wait_happens_when_no_stop_is_requested(
+    scheduler: DriftFreeScheduler,
+    clock: ControlledClock,
+) -> None:
+    scheduler.wait_for_next_tick()
+
+    scheduler.wait_for_next_tick(should_stop=lambda: False)
+
+    assert clock.elapsed == 60.0
+
+
+def test_the_wait_is_sliced_finely_enough_to_react_quickly(
+    scheduler: DriftFreeScheduler,
+    clock: ControlledClock,
+) -> None:
+    scheduler.wait_for_next_tick()
+
+    scheduler.wait_for_next_tick(should_stop=lambda: False)
+
+    assert max(clock.sleep_durations) <= 0.25

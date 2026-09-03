@@ -369,17 +369,15 @@ def test_the_loop_stops_when_a_shutdown_is_requested(
         },
     )
     collector = build_collector(api_client, publisher)
-    cycles_before_stop = 2
-    executed = 0
+    sites_per_cycle = 2
+    wanted_cycles = 2
 
-    def should_stop() -> bool:
-        nonlocal executed
-        executed += 1
-        return executed > cycles_before_stop
+    reports = collector.run(
+        interval_seconds=0.001,
+        should_stop=lambda: len(api_client.current_calls) >= sites_per_cycle * wanted_cycles,
+    )
 
-    reports = collector.run(interval_seconds=0.001, should_stop=should_stop)
-
-    assert len(reports) == cycles_before_stop
+    assert len(reports) == wanted_cycles
 
 
 def test_a_started_cycle_always_completes_before_stopping(
@@ -393,15 +391,34 @@ def test_a_started_cycle_always_completes_before_stopping(
          "SITE002": [build_reading("SITE002", 0, 500.0)]},
     )
     collector = build_collector(api_client, publisher)
-    already_asked = False
 
-    def should_stop() -> bool:
-        nonlocal already_asked
-        if not already_asked:
-            already_asked = True
-            return False
-        return True
-
-    collector.run(interval_seconds=0.001, should_stop=should_stop)
+    collector.run(
+        interval_seconds=0.001,
+        should_stop=lambda: len(api_client.current_calls) >= 1,
+    )
 
     assert len(publisher.payloads_on(MEASURE_TOPIC)) == 2
+
+
+def test_a_shutdown_during_the_wait_prevents_one_more_cycle(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Un signal recu pendant l'attente doit sortir sans lancer de cycle supplementaire,
+    # sinon docker envoie SIGKILL avant que le processus n'ait reagi.
+    api_client = ScriptedApiClient(
+        registry,
+        {
+            "SITE001": [build_reading("SITE001", m, 100.0) for m in range(5)],
+            "SITE002": [build_reading("SITE002", m, 500.0) for m in range(5)],
+        },
+    )
+    collector = build_collector(api_client, publisher)
+    shutdown_after_first_cycle = False
+
+    def should_stop() -> bool:
+        return shutdown_after_first_cycle or len(api_client.current_calls) >= 2
+
+    reports = collector.run(interval_seconds=5.0, should_stop=should_stop)
+
+    assert len(reports) == 1

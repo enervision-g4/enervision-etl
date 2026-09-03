@@ -141,7 +141,14 @@ class RealtimeCollector:
             if should_stop is not None and should_stop():
                 logger.info("boucle_interrompue", cycles=len(reports))
                 break
-            tick = scheduler.wait_for_next_tick()
+
+            tick = scheduler.wait_for_next_tick(should_stop)
+
+            # Un signal recu pendant l'attente doit sortir sans lancer un cycle de plus.
+            if should_stop is not None and should_stop():
+                logger.info("boucle_interrompue", cycles=len(reports))
+                break
+
             if tick.skipped_ticks:
                 logger.warning(
                     "cycles_sautes",
