@@ -137,6 +137,10 @@ class BatchBackfill:
                 site=site_id,
                 mesures=len(series),
                 taux_nul=round(report.null_ratio, 3),
+                raison="le site etait en panne au moment de l'appel, la periode entiere "
+                "est vide : ce n'est pas un historique",
+                remedes="essayer un autre site, reessayer plus tard, ou forcer la "
+                "publication avec --force-degenerate",
             )
             return report
 

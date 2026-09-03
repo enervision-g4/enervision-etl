@@ -60,7 +60,11 @@ chemin = sys.argv[1] if len(sys.argv) > 1 else "-"
 messages = charger(chemin)
 
 if not messages:
-    print("Aucun message trouve. Le flux a-t-il bien ete redirige dans ce fichier ?")
+    print("Aucun message dans ce flux. Deux causes possibles :")
+    print("  1. Le collecteur a refuse de publier la fenetre demandee. Cherchez la ligne")
+    print("     fenetre_degeneree_refusee dans les journaux restes a l'ecran : le site")
+    print("     etait en panne et la periode entiere est vide.")
+    print("  2. La redirection n'a pas fonctionne et le flux n'est jamais arrive ici.")
     sys.exit(1)
 
 print(f"{len(messages)} messages relus depuis {chemin}")
