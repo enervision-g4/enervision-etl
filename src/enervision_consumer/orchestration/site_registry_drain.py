@@ -86,7 +86,12 @@ class SiteRegistryDrain:
 
             while True:
                 message = consumer.poll(self._poll_timeout_seconds)
-                if message is None:
+                broker_error = None if message is None else message.error()
+                if broker_error is not None:
+                    logger.warning("broker_event_ignored", cause=str(broker_error))
+                if message is None or broker_error is not None:
+                    # Un evenement d'erreur ne porte pas de donnee : il compte comme une
+                    # lecture vide, sans quoi un topic indisponible bouclerait sans fin.
                     silent_polls += 1
                     tolerated = (
                         self._silent_polls_before_end
