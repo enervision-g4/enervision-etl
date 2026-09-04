@@ -76,3 +76,16 @@ def test_an_empty_registry_is_not_an_error(consumer: Any, connection: Any) -> No
     kafka = consumer([])
 
     assert build_drain(kafka, connection)() == 0
+
+
+def test_a_group_still_joining_does_not_end_the_drain(consumer: Any, connection: Any) -> None:
+    # Constate sur un vrai broker : un groupe neuf ne recoit rien pendant qu'il rejoint
+    # et se voit attribuer sa partition. Compter ce silence comme une fin de topic
+    # faisait rendre un referentiel vide, alors qu'il y avait sept sites a lire.
+    kafka = consumer(
+        [site_message("SITE001"), site_message("SITE002")],
+        None,
+        4,
+    )
+
+    assert build_drain(kafka, connection)() == 2

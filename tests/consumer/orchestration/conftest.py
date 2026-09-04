@@ -31,8 +31,10 @@ class FakeConsumer:
         self,
         messages: Optional[list[FakeConsumerMessage]] = None,
         journal: Optional[list[str]] = None,
+        silent_polls_before_delivery: int = 0,
     ) -> None:
         self._messages = list(messages) if messages is not None else []
+        self._silent_polls_before_delivery = silent_polls_before_delivery
         self.journal = journal if journal is not None else []
         self.subscribed: list[str] = []
         self.committed: list[FakeConsumerMessage] = []
@@ -46,6 +48,11 @@ class FakeConsumer:
         self.subscribed = list(topics)
 
     def poll(self, timeout: float = 0) -> Optional[FakeConsumerMessage]:
+        # Un groupe qui vient de rejoindre ne recoit rien tant que sa partition ne lui
+        # est pas attribuee : le double reproduit ce silence initial.
+        if self._silent_polls_before_delivery > 0:
+            self._silent_polls_before_delivery -= 1
+            return None
         if not self._messages:
             return None
         return self._messages.pop(0)
@@ -68,7 +75,8 @@ def consumer() -> Any:
     def build(
         messages: Optional[list[FakeConsumerMessage]] = None,
         journal: Optional[list[str]] = None,
+        silent_polls_before_delivery: int = 0,
     ) -> FakeConsumer:
-        return FakeConsumer(messages, journal)
+        return FakeConsumer(messages, journal, silent_polls_before_delivery)
 
     return build

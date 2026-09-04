@@ -5,9 +5,13 @@ l'etat courant du parc, pas un historique. Ce drainage n'acquitte jamais ses off
 ce qui lui fait reprendre au debut a chaque appel, comportement voulu ici.
 
 La fin du topic est reconnue a son silence, faute d'API d'offsets dans le contrat de
-consumer utilise ici. Un drainage qui s'arreterait trop tot n'est pas grave : le fait
-qui reference un site manquant echouera sur la cle etrangere, ce qui declenche
-precisement un nouveau drainage.
+consumer utilise ici. Encore faut il ne pas confondre deux silences : un groupe qui
+vient de rejoindre ne recoit rien tant que sa partition ne lui est pas attribuee, ce qui
+n'a rien d'une fin de topic. Le budget de lectures vides est donc plus large tant que
+rien n'est arrive, et se resserre des le premier message recu.
+
+Si le drainage s'arretait malgre tout trop tot, le fait qui reference un site manquant
+echouerait sur la cle etrangere, ce qui declenche precisement un nouveau drainage.
 """
 
 from collections.abc import Callable
@@ -26,7 +30,10 @@ DEFAULT_POLL_TIMEOUT_SECONDS = 1.0
 """Attente d'un message avant de compter une lecture comme silencieuse."""
 
 DEFAULT_SILENT_POLLS_BEFORE_END = 2
-"""Nombre de lectures vides consecutives valant fin du topic."""
+"""Lectures vides consecutives valant fin du topic, une fois le premier message recu."""
+
+DEFAULT_SILENT_POLLS_BEFORE_FIRST = 10
+"""Lectures vides tolerees avant le premier message, le temps que le groupe rejoigne."""
 
 
 class SiteRegistryDrain:
@@ -39,6 +46,7 @@ class SiteRegistryDrain:
         site_topic: str,
         poll_timeout_seconds: float = DEFAULT_POLL_TIMEOUT_SECONDS,
         silent_polls_before_end: int = DEFAULT_SILENT_POLLS_BEFORE_END,
+        silent_polls_before_first: int = DEFAULT_SILENT_POLLS_BEFORE_FIRST,
     ) -> None:
         """Prepare le drainage.
 
@@ -47,13 +55,17 @@ class SiteRegistryDrain:
             connection: Connexion vers la base, en validation manuelle.
             site_topic: Topic compacte du referentiel.
             poll_timeout_seconds: Attente maximale d'un message.
-            silent_polls_before_end: Lectures vides consecutives valant fin du topic.
+            silent_polls_before_end: Lectures vides valant fin du topic, une fois le
+                premier message recu.
+            silent_polls_before_first: Lectures vides tolerees avant le premier message,
+                le temps que le groupe rejoigne et recoive sa partition.
         """
         self._open_consumer = open_consumer
         self._connection = connection
         self._site_topic = site_topic
         self._poll_timeout_seconds = poll_timeout_seconds
         self._silent_polls_before_end = silent_polls_before_end
+        self._silent_polls_before_first = silent_polls_before_first
 
     def __call__(self) -> int:
         """Relit le referentiel et l'applique en base.
@@ -72,10 +84,17 @@ class SiteRegistryDrain:
             consumer.subscribe([self._site_topic])
             silent_polls = 0
 
-            while silent_polls < self._silent_polls_before_end:
+            while True:
                 message = consumer.poll(self._poll_timeout_seconds)
                 if message is None:
                     silent_polls += 1
+                    tolerated = (
+                        self._silent_polls_before_end
+                        if applied_sites
+                        else self._silent_polls_before_first
+                    )
+                    if silent_polls >= tolerated:
+                        break
                     continue
 
                 silent_polls = 0
