@@ -1,4 +1,4 @@
-"""Normalisation des mesures avant publication : mise a l'heure UTC et taux de charge.
+"""Normalisation avant publication : mise a l'heure UTC et taux de charge.
 
 Fonctions pures, sans effet de bord.
 """
@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from enervision_contracts.alert import Alert
 from enervision_contracts.energy_reading import EnergyReading
 
 LOAD_PERCENT_DECIMALS = 2
@@ -88,4 +89,24 @@ def normalize_reading(reading: EnergyReading, source_timezone: str) -> EnergyRea
     """
     return reading.model_copy(
         update={"timestamp": to_utc(reading.timestamp, source_timezone)}
+    )
+
+
+def normalize_alert(alert: Alert, source_timezone: str) -> Alert:
+    """Produit une copie de l'alerte dont l'horodatage est exprime en UTC.
+
+    Severite, type, message et valeurs mesurees sont reportes a l'identique.
+
+    Args:
+        alert: Alerte issue de l'API mock.
+        source_timezone: Nom IANA du fuseau suppose des horodatages naifs.
+
+    Returns:
+        Une nouvelle alerte, identique a la premiere hormis son horodatage en UTC.
+
+    Raises:
+        ValueError: Si source_timezone n'est pas un fuseau IANA connu.
+    """
+    return alert.model_copy(
+        update={"timestamp": to_utc(alert.timestamp, source_timezone)}
     )

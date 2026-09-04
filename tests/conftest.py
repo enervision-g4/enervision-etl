@@ -34,3 +34,8 @@ def degraded_series_payload() -> list[dict[str, Any]]:
 @pytest.fixture
 def site_registry_payload() -> list[dict[str, Any]]:
     return load_api_fixture("sites.json")
+
+
+@pytest.fixture
+def active_alerts_payload() -> list[dict[str, Any]]:
+    return load_api_fixture("alerts_active.json")

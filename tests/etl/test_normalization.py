@@ -4,9 +4,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from enervision_contracts.alert import Alert
 from enervision_contracts.energy_reading import EnergyReading
 from enervision_etl.transform.normalization import (
     compute_load_percent,
+    normalize_alert,
     normalize_reading,
     to_utc,
 )
@@ -123,3 +125,42 @@ def test_normalize_reading_returns_a_new_immutable_instance(
 
     assert normalized is not reading
     assert reading.timestamp.tzinfo is None
+
+
+def test_normalize_alert_converts_the_timestamp(
+    active_alerts_payload: list[dict[str, Any]],
+) -> None:
+    alert = Alert.model_validate(active_alerts_payload[0])
+
+    normalized = normalize_alert(alert, PARIS)
+
+    assert normalized.timestamp.tzinfo == UTC
+    assert normalized.timestamp.hour == 12
+
+
+def test_normalize_alert_preserves_every_other_field(
+    active_alerts_payload: list[dict[str, Any]],
+) -> None:
+    alert = Alert.model_validate(active_alerts_payload[0])
+
+    normalized = normalize_alert(alert, "UTC")
+
+    assert normalized.alert_id == "ALR-SITE002-1718458320"
+    assert normalized.severity == "critical"
+    assert normalized.type == "outage"
+    assert normalized.value == 812.5
+    assert normalized.threshold == 720.0
+
+
+def test_normalize_alert_keeps_an_absent_measurement_null(
+    active_alerts_payload: list[dict[str, Any]],
+) -> None:
+    # Une alerte sans mesure associee ne doit pas ressortir a zero kW.
+    alert = Alert.model_validate(
+        active_alerts_payload[0] | {"value": None, "threshold": None}
+    )
+
+    normalized = normalize_alert(alert, "UTC")
+
+    assert normalized.value is None
+    assert normalized.threshold is None

@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 import pytest
 
+from enervision_contracts.alert import Alert
 from enervision_contracts.energy_reading import EnergyReading
 from enervision_contracts.envelope import MessageEnvelope
 from enervision_contracts.site import Site
@@ -12,6 +13,7 @@ from enervision_etl.orchestration.realtime_collector import RealtimeCollector
 MEASURE_TOPIC = "enervision.measure_raw"
 IMPUTED_TOPIC = "enervision.measure_imputed"
 SITE_TOPIC = "enervision.site"
+ALERT_TOPIC = "enervision.alert"
 
 
 class RecordingPublisher:
@@ -48,11 +50,26 @@ class RecordingPublisher:
 class ScriptedApiClient:
     """Client d'API pilote par le test, y compris dans ses pannes."""
 
-    def __init__(self, registry: list[Site], readings_by_site: dict[str, list[Any]]) -> None:
+    def __init__(
+        self,
+        registry: list[Site],
+        readings_by_site: dict[str, list[Any]],
+        alerts: Optional[list[Alert]] = None,
+        alerts_failure: Optional[Exception] = None,
+    ) -> None:
         self._registry = registry
         self._readings_by_site = {site_id: list(v) for site_id, v in readings_by_site.items()}
+        self._alerts = list(alerts) if alerts is not None else []
+        self._alerts_failure = alerts_failure
         self.registry_calls = 0
         self.current_calls: list[str] = []
+        self.alert_calls = 0
+
+    def fetch_active_alerts(self) -> list[Alert]:
+        self.alert_calls += 1
+        if self._alerts_failure is not None:
+            raise self._alerts_failure
+        return list(self._alerts)
 
     def fetch_site_registry(self) -> list[Site]:
         self.registry_calls += 1
@@ -115,6 +132,7 @@ def build_collector(
         "source_timezone": "UTC",
         "max_gap_measures": 3,
         "site_refresh_interval_seconds": 3600.0,
+        "alert_topic": ALERT_TOPIC,
     }
     parameters.update(overrides)
     return RealtimeCollector(**parameters)
@@ -468,3 +486,131 @@ def test_the_cadence_cannot_be_judged_before_the_park_is_known(
     collector = build_collector(api_client, publisher)
 
     assert collector.cadence_shortfall_seconds(60.0, 40.0) == 0.0
+
+
+def build_alert(site_id: str, minute: int, severity: str = "critical") -> Alert:
+    return Alert(
+        alert_id=f"ALR-{site_id}-{minute}",
+        timestamp=datetime(2026, 9, 2, 10, minute),
+        site_id=site_id,
+        severity=severity,
+        type="outage",
+        message="Risque de surcharge",
+        value=812.5,
+        threshold=720.0,
+    )
+
+
+def nominal_readings() -> dict[str, list[Any]]:
+    return {
+        "SITE001": [build_reading("SITE001", 0, 100.0)],
+        "SITE002": [build_reading("SITE002", 0, 500.0)],
+    }
+
+
+def test_a_cycle_publishes_the_active_alerts(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry, nominal_readings(), alerts=[build_alert("SITE002", 12)]
+    )
+
+    build_collector(api_client, publisher).run_cycle()
+
+    published_alerts = publisher.payloads_on(ALERT_TOPIC)
+    assert len(published_alerts) == 1
+    assert published_alerts[0].site_id == "SITE002"
+    assert published_alerts[0].source_alert_id == "ALR-SITE002-12"
+    assert published_alerts[0].value_kw == 812.5
+    # L'API date ses alertes sans fuseau : le collecteur les situe avant publication.
+    assert published_alerts[0].timestamp.tzinfo == UTC
+
+
+def test_alerts_are_fetched_once_per_cycle_not_once_per_site(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry, nominal_readings(), alerts=[build_alert("SITE001", 5)]
+    )
+
+    build_collector(api_client, publisher).run_cycle()
+
+    assert api_client.alert_calls == 1
+    assert len(api_client.current_calls) == 2
+
+
+def test_a_park_without_alert_publishes_nothing_on_the_alert_topic(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(registry, nominal_readings(), alerts=[])
+
+    build_collector(api_client, publisher).run_cycle()
+
+    assert publisher.payloads_on(ALERT_TOPIC) == []
+
+
+def test_the_cycle_report_counts_the_published_alerts(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry,
+        nominal_readings(),
+        alerts=[build_alert("SITE001", 5), build_alert("SITE002", 12)],
+    )
+
+    report = build_collector(api_client, publisher).run_cycle()
+
+    assert report.published_alert_count == 2
+
+
+def test_an_unreachable_alerts_endpoint_never_interrupts_the_measures(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    # Un seul endpoint muet ne doit pas priver tout le parc de ses mesures, au meme
+    # titre qu'un site injoignable n'interrompt pas la collecte des autres.
+    api_client = ScriptedApiClient(
+        registry,
+        nominal_readings(),
+        alerts_failure=MockApiUnavailableError("/api/v1/alerts"),
+    )
+
+    report = build_collector(api_client, publisher).run_cycle()
+
+    assert len(publisher.payloads_on(MEASURE_TOPIC)) == 2
+    assert len(publisher.payloads_on(IMPUTED_TOPIC)) == 2
+    assert report.failed_sites == []
+
+
+def test_an_unreachable_alerts_endpoint_is_reported(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(
+        registry,
+        nominal_readings(),
+        alerts_failure=MockApiUnavailableError("/api/v1/alerts"),
+    )
+
+    report = build_collector(api_client, publisher).run_cycle()
+
+    assert report.alerts_endpoint_failed
+    # Zero alerte publiee n'est pas la meme chose qu'un parc sain : le drapeau
+    # ci-dessus est le seul moyen pour l'aval de faire la difference.
+    assert report.published_alert_count == 0
+    assert publisher.payloads_on(ALERT_TOPIC) == []
+
+
+def test_a_healthy_alerts_endpoint_raises_no_flag(
+    registry: list[Site],
+    publisher: RecordingPublisher,
+) -> None:
+    api_client = ScriptedApiClient(registry, nominal_readings(), alerts=[])
+
+    report = build_collector(api_client, publisher).run_cycle()
+
+    assert not report.alerts_endpoint_failed

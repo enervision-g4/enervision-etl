@@ -38,7 +38,10 @@ def configure_logging(level: str = "INFO", as_json: bool = True) -> None:
             logging.getLevelNamesMapping()[level.upper()]
         ),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
-        cache_logger_on_first_use=True,
+        # Sans cache : le journal figerait sinon son flux de sortie au premier
+        # evenement emis, et une reconfiguration ulterieure ecrirait dans le flux
+        # d'origine, muet une fois celui-ci remplace.
+        cache_logger_on_first_use=False,
     )
 
 

@@ -14,6 +14,7 @@ def stub_api(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     """Neutralise l'acces reseau en remplacant le client d'API par un double."""
     from datetime import UTC, datetime, timedelta
 
+    from enervision_contracts.alert import Alert
     from enervision_contracts.energy_reading import EnergyReading
     from enervision_contracts.site import Site
 
@@ -48,6 +49,20 @@ def stub_api(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
             data_quality="good",
         )
 
+    def fetch_active_alerts(self: Any) -> list[Alert]:
+        return [
+            Alert(
+                alert_id="ALR-SITE001-1718458320",
+                timestamp=datetime(2026, 9, 2, 10, 12),
+                site_id="SITE001",
+                severity="critical",
+                type="outage",
+                message="Risque de surcharge",
+                value=812.5,
+                threshold=720.0,
+            )
+        ]
+
     def fetch_readings_window(
         self: Any,
         site_id: Any,
@@ -67,6 +82,7 @@ def stub_api(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
 
     monkeypatch.setattr(MockApiClient, "fetch_site_registry", fetch_site_registry)
     monkeypatch.setattr(MockApiClient, "fetch_current_reading", fetch_current_reading)
+    monkeypatch.setattr(MockApiClient, "fetch_active_alerts", fetch_active_alerts)
     monkeypatch.setattr(MockApiClient, "fetch_readings_window", fetch_readings_window)
     monkeypatch.setenv("API_MOCK_BASE_URL", "http://192.0.2.10:8000")
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
@@ -104,6 +120,31 @@ def test_collect_realtime_publishes_the_site_registry(stub_api: None) -> None:
 
     topics = [line["topic"] for line in published_lines(result.stdout)]
     assert topics.count("enervision.site") == 2
+
+
+def test_collect_realtime_publishes_the_active_alerts(stub_api: None) -> None:
+    result = runner.invoke(application, ["collect-realtime", "--cycles", "1"])
+
+    assert result.exit_code == 0
+    published_alerts = [
+        line for line in published_lines(result.stdout)
+        if line["topic"] == "enervision.alert"
+    ]
+    assert len(published_alerts) == 1
+    payload = published_alerts[0]["value"]["payload"]
+    assert payload["source_alert_id"] == "ALR-SITE001-1718458320"
+    assert payload["value_kw"] == 812.5
+
+
+def test_backfill_publishes_no_alert(stub_api: None) -> None:
+    # Le rattrapage ne porte que des mesures : l'API n'expose pas d'historique
+    # d'alertes, il n'y a donc rien a rejouer sur ce topic.
+    result = runner.invoke(
+        application, ["backfill", "--site", "SITE002", "--hours", "1"]
+    )
+
+    topics = [line["topic"] for line in published_lines(result.stdout)]
+    assert "enervision.alert" not in topics
 
 
 def test_backfill_publishes_the_requested_window(stub_api: None) -> None:

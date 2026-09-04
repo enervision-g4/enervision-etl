@@ -126,6 +126,7 @@ def collect_realtime(
             site_topic=settings.kafka_topic_site,
             measure_raw_topic=settings.kafka_topic_measure_raw,
             measure_imputed_topic=settings.kafka_topic_measure_imputed,
+            alert_topic=settings.kafka_topic_alert,
             source_timezone=settings.api_mock_source_timezone,
             max_gap_measures=settings.imputation_max_gap_measures,
             site_refresh_interval_seconds=settings.site_refresh_interval_seconds,
