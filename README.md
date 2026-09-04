@@ -68,9 +68,18 @@ cp .env.example .env
 | `KAFKA_TOPIC_ALERT` | Topic alimentant la table `ALERT` |
 | `METRICS_PORT` | Port d'exposition des metriques Prometheus |
 | `IMPUTATION_MAX_GAP_MEASURES` | Longueur maximale d'un trou encore imputable |
+| `DATABASE_URL` | Base de destination des consumers, schema `postgres://` ou `postgresql://` |
+| `KAFKA_CONSUMER_GROUP` | Groupe d'un consumer. A laisser vide, voir plus bas |
 
-Le service refuse de demarrer si `API_MOCK_BASE_URL` ou `KAFKA_BOOTSTRAP_SERVERS`
-sont absents. Une configuration incomplete echoue immediatement, avec un message
+Les trois roles ne lisent pas les memes variables. Le collecteur n'exige un broker que
+si `PUBLISHER_TARGET` vaut `kafka` ; les consumers l'exigent toujours, ils n'ont pas
+d'autre source. `KAFKA_CONSUMER_GROUP` doit rester vide dans un fichier partage : chaque
+service a son propre defaut, et le renseigner mettrait les deux consumers dans le meme
+groupe, ou ils se partageraient le topic des sites au lieu de le recevoir chacun en
+entier.
+
+Le collecteur refuse de demarrer si `API_MOCK_BASE_URL` ou `KAFKA_BOOTSTRAP_SERVERS`
+sont absents, les consumers si `DATABASE_URL` ou `KAFKA_BOOTSTRAP_SERVERS` le sont. Une configuration incomplete echoue immediatement, avec un message
 explicite, plutot qu'au bout de plusieurs minutes de fonctionnement.
 
 ### Nommage des topics Kafka
@@ -79,6 +88,10 @@ Chaque topic porte le nom de la table qu'il alimente, prefixe par le domaine :
 `enervision.measure_raw`, `enervision.measure_imputed`, `enervision.alert`. La
 destination d'un message se lit donc sans documentation, et les deux depots partagent
 le meme vocabulaire que le MCD.
+
+Le collecteur alimente les quatre topics. Les alertes viennent de `/api/v1/alerts`,
+relevees une fois par cycle pour tout le parc, la ou les mesures demandent un appel par
+site.
 
 Le referentiel des sites passe par le topic `enervision.site`, qui **doit etre cree
 avec `cleanup.policy=compact`**. Il decrit un etat courant et non une suite
@@ -138,6 +151,42 @@ Une fenetre integralement nulle est refusee : ce n'est pas un historique mais l'
 d'une panne au moment de l'appel, projete sur toute la periode. `--force-degenerate`
 passe outre.
 
+## Consumers
+
+Deux services distincts, deux conteneurs, deux consumer groups. Ils relisent les topics
+et ecrivent dans PostgreSQL et TimescaleDB.
+
+```bash
+uv run enervision-consumer consume-persistence
+uv run enervision-consumer consume-alerting
+uv run enervision-consumer consume-persistence --max-messages 20   # borne, pour un essai
+```
+
+Le premier ecrit les sites et les mesures, le second les alertes. Chacun consomme aussi
+le topic des sites : `site_id` est une cle etrangere des deux cotes, et rien ne garantit
+que l'autre service ait deja rattrape son referentiel.
+
+Trois regles gouvernent leur boucle. Le referentiel est draine avant les faits qui le
+referencent, les topics n'etant pas ordonnes entre eux. La transaction est validee avant
+l'acquittement de l'offset, sans quoi une coupure entre les deux perdrait un message
+sans que rien ne le signale. Et un fait dont le site est encore inconnu declenche un
+redrainage puis une nouvelle tentative ; s'il echoue encore, l'offset n'est pas acquitte
+et le message reviendra au redemarrage.
+
+### Ce que le simulateur d'alertes impose de savoir
+
+L'instance mock **fabrique une liste d'alertes neuve a chaque appel** plutot que de
+renvoyer des alertes actives durables : deux interrogations espacees de vingt secondes
+n'ont aucune alerte en commun, et l'identifiant renvoye porte l'heure de la requete.
+
+La contrainte d'unicite sur `source_alert_id` garde donc son role, qui est d'absorber la
+remise d'un meme message par Kafka, mais elle ne dedoublonne rien a la source. La table
+`alert` accumule autant de lignes que le collecteur releve d'alertes, soit quelques
+milliers par jour a la cadence par defaut. C'est une propriete du simulateur, pas du
+pipeline : une vraie API d'alertes renverrait un etat courant stable. Le constat est
+laisse ici plutot que masque, parce qu'il change la lecture qu'on peut faire du contenu
+de cette table.
+
 ## Conteneurisation
 
 L'image est construite en deux etapes : `uv` installe les dependances figees par
@@ -147,7 +196,11 @@ construction. Le processus tourne sous un utilisateur dedie, jamais en root.
 ```bash
 docker build -t enervision-etl .
 docker run --rm --env-file .env enervision-etl collect-realtime --cycles 1
+docker run --rm --env-file .env --entrypoint enervision-consumer enervision-etl consume-persistence
 ```
+
+L'image porte les trois roles : les deux points d'entree y sont installes, et seul
+l'`entrypoint` du compose les distingue.
 
 Le conteneur traite `SIGTERM` : `docker stop` laisse le cycle en cours se terminer,
 puis vide la file de publication avant de rendre la main. Sans cela, les messages en
@@ -163,6 +216,11 @@ uv run pytest              # suite de tests
 uv run ruff check src tests scripts
 uv run mypy                # typage strict sur src
 ```
+
+Les tests marques `integration` sont exclus par defaut : ils exigent un PostgreSQL reel.
+Ils verifient ce que des doubles ne peuvent pas prouver, les semantiques qui
+appartiennent a la base. La commande pour les lancer figure en tete de
+`tests/consumer/integration/test_repositories_against_postgres.py`.
 
 ## Documentation du code
 
@@ -217,6 +275,10 @@ src/
     transform/            normalisation UTC et imputation
     load/                 publication vers Kafka
   enervision_consumer/    consumers de persistance et d'alerting
+    config.py             configuration validee au demarrage
+    extract/              lecture du bus et decodage des enveloppes
+    load/                 depots, un par table du modele
+    orchestration/        boucle commune, drainage du referentiel, arret propre
 scripts/
   probe_api_contract.py            controle de conformite d'une instance de l'API Mock
   diagnose_readings_endpoint.py  caracterisation de l'endpoint historique
