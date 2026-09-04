@@ -17,6 +17,10 @@ class CursorLike(Protocol):
         """Envoie une requete parametree a la base."""
         ...
 
+    def fetchone(self) -> Optional[tuple[object, ...]]:
+        """Rend la premiere ligne du resultat, ou None si la requete n'en a produit aucune."""
+        ...
+
     def __enter__(self) -> "CursorLike":
         """Ouvre le bloc de contexte du curseur."""
         ...

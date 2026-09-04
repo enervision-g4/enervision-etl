@@ -13,16 +13,24 @@ class FakeCursor:
     et a scenariser une erreur du pilote.
     """
 
-    def __init__(self, failure: Optional[Exception] = None) -> None:
+    def __init__(
+        self,
+        failure: Optional[Exception] = None,
+        fetched_row: Optional[tuple[Any, ...]] = None,
+    ) -> None:
         self.statements: list[str] = []
         self.parameters: list[Sequence[Any]] = []
         self._failure = failure
+        self.fetched_row = fetched_row
 
     def execute(self, statement: str, parameters: Optional[Sequence[Any]] = None) -> None:
         self.statements.append(statement)
         self.parameters.append(parameters if parameters is not None else ())
         if self._failure is not None:
             raise self._failure
+
+    def fetchone(self) -> Optional[tuple[Any, ...]]:
+        return self.fetched_row
 
     def __enter__(self) -> "FakeCursor":
         return self
@@ -39,8 +47,12 @@ class FakeCursor:
 class FakeConnection:
     """Connexion en memoire, qui rend toujours le meme curseur observable."""
 
-    def __init__(self, failure: Optional[Exception] = None) -> None:
-        self.opened_cursor = FakeCursor(failure)
+    def __init__(
+        self,
+        failure: Optional[Exception] = None,
+        fetched_row: Optional[tuple[Any, ...]] = None,
+    ) -> None:
+        self.opened_cursor = FakeCursor(failure, fetched_row)
         self.commits = 0
         self.rollbacks = 0
         self.closed = False
@@ -67,5 +79,13 @@ def connection() -> FakeConnection:
 def failing_connection() -> Any:
     def build(failure: Exception) -> FakeConnection:
         return FakeConnection(failure)
+
+    return build
+
+
+@pytest.fixture
+def connection_returning() -> Any:
+    def build(fetched_row: Optional[tuple[Any, ...]]) -> FakeConnection:
+        return FakeConnection(fetched_row=fetched_row)
 
     return build
