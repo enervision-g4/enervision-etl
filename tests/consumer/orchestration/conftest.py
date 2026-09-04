@@ -4,11 +4,21 @@ import pytest
 
 
 class FakeConsumerMessage:
-    """Message en memoire reproduisant ce que rend le client Kafka."""
+    """Message en memoire reproduisant ce que rend le client Kafka.
 
-    def __init__(self, topic: str, value: Optional[bytes]) -> None:
+    Le client rend les evenements d'erreur par le meme poll que les vrais messages :
+    seul error() les distingue, et value() porte alors le texte de l'erreur.
+    """
+
+    def __init__(
+        self,
+        topic: str,
+        value: Optional[bytes],
+        error: Optional[object] = None,
+    ) -> None:
         self._topic = topic
         self._value = value
+        self._error = error
 
     def topic(self) -> str:
         return self._topic
@@ -17,7 +27,7 @@ class FakeConsumerMessage:
         return self._value
 
     def error(self) -> Optional[object]:
-        return None
+        return self._error
 
 
 class FakeConsumer:

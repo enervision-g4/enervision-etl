@@ -242,3 +242,41 @@ def test_an_imputed_measure_without_its_raw_counterpart_is_stored_unlinked(
     assert report.unlinked_imputed_measures == 1
     assert connection.opened_cursor.parameters[1][0] is None
     assert len(kafka.committed) == 1
+
+
+def broker_error_event() -> FakeConsumerMessage:
+    # Ce que rend confluent_kafka quand le topic n'est pas encore connu du broker :
+    # un message dont value() porte le texte de l'erreur, pas du JSON.
+    return FakeConsumerMessage(
+        IMPUTED_TOPIC,
+        b"Subscribed topic not available: unknown topic or partition",
+        error="UNKNOWN_TOPIC_OR_PART",
+    )
+
+
+def test_a_broker_error_event_is_not_taken_for_a_message(
+    consumer: Any,
+    connection: Any,
+) -> None:
+    # Constate sur un vrai broker au demarrage : sans consulter error(), le texte de
+    # l'erreur partait au decodage JSON et faisait tomber le consumer.
+    kafka = consumer([broker_error_event(), raw_message()])
+
+    report = build_consumer(kafka, connection).run(max_messages=1)
+
+    assert report.raw_measures_written == 1
+    assert report.imputed_measures_written == 0
+
+
+def test_a_broker_error_event_is_never_acknowledged(
+    consumer: Any,
+    connection: Any,
+) -> None:
+    # Il n'y a pas de donnee derriere : acquitter une position pour un evenement
+    # d'erreur ferait avancer l'offset sans que rien n'ait ete ecrit.
+    kafka = consumer([broker_error_event(), raw_message()])
+
+    build_consumer(kafka, connection).run(max_messages=1)
+
+    assert len(kafka.committed) == 1
+    assert kafka.committed[0].topic() == RAW_TOPIC

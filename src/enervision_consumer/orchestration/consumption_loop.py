@@ -4,6 +4,11 @@ Elle porte les regles qui ne doivent exister qu'a un seul endroit : le referenti
 draine avant les faits qui le referencent, la transaction validee avant l'acquittement
 de l'offset, et la reprise sur un site encore inconnu. Les dupliquer par consumer
 reviendrait a les laisser diverger.
+
+Le client Kafka rend aussi ses evenements d'erreur par le meme poll que les messages,
+un topic pas encore connu du broker par exemple. Seul error() les distingue, et leur
+value() porte le texte de l'erreur : les traiter comme des donnees ferait echouer le
+decodage sur ce qui n'est qu'un avertissement transitoire.
 """
 
 from collections.abc import Callable, Mapping
@@ -12,6 +17,9 @@ from typing import Optional
 from ..extract.kafka_consumer import ConsumedMessage, ConsumerLike
 from ..load.errors import UnknownSiteReferenceError
 from ..load.postgres_connection import ConnectionLike
+from ..logging_setup import get_logger
+
+logger = get_logger("consumption_loop")
 
 DEFAULT_POLL_TIMEOUT_SECONDS = 1.0
 """Attente maximale d'un message avant de rendre la main a la boucle."""
@@ -82,6 +90,12 @@ class ConsumptionLoop:
 
             message = self._consumer.poll(poll_timeout_seconds)
             if message is None:
+                continue
+
+            broker_error = message.error()
+            if broker_error is not None:
+                # Rien a ecrire ni a acquitter : il n'y a pas de donnee derriere.
+                logger.warning("broker_event_ignored", cause=str(broker_error))
                 continue
 
             self._persist(message)

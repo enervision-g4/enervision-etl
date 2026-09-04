@@ -89,3 +89,16 @@ def test_a_group_still_joining_does_not_end_the_drain(consumer: Any, connection:
     )
 
     assert build_drain(kafka, connection)() == 2
+
+
+def test_a_broker_error_event_does_not_end_the_drain(consumer: Any, connection: Any) -> None:
+    # Meme piege que dans la boucle : l'evenement d'erreur ne porte pas de JSON, et le
+    # drainage ne doit ni le decoder ni le prendre pour la fin du topic.
+    erreur = FakeConsumerMessage(
+        SITE_TOPIC,
+        b"Subscribed topic not available: unknown topic or partition",
+        error="UNKNOWN_TOPIC_OR_PART",
+    )
+    kafka = consumer([erreur, site_message("SITE001")])
+
+    assert build_drain(kafka, connection)() == 1
