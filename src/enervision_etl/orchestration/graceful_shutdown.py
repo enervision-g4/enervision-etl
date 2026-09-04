@@ -46,7 +46,7 @@ class ShutdownRequest:
             frame: Pile d'execution interrompue, absente en appel direct.
         """
         if not self._requested:
-            logger.info("arret_demande", signal=received_signal)
+            logger.info("shutdown_requested", signal=received_signal)
         self._requested = True
 
     def install(self) -> None:

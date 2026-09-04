@@ -142,9 +142,9 @@ def collect_realtime(
             )
             if shortfall:
                 logger.warning(
-                    "cadence_intenable",
-                    manque_s=round(shortfall, 1),
-                    conseil="augmenter POLL_INTERVAL_SECONDS, reduire SITES, ou baisser "
+                    "cadence_unsustainable",
+                    shortfall_s=round(shortfall, 1),
+                    advice="raise POLL_INTERVAL_SECONDS, narrow SITES, or lower "
                     "API_MOCK_MIN_REQUEST_INTERVAL_SECONDS",
                 )
 
@@ -155,9 +155,9 @@ def collect_realtime(
                 should_stop=lambda: shutdown.requested,
             )
         except KeyboardInterrupt:
-            logger.info("arret_demande")
+            logger.info("shutdown_requested")
         except MockApiError as failure:
-            logger.error("collecte_interrompue", cause=str(failure))
+            logger.error("collection_interrupted", cause=str(failure))
             raise typer.Exit(code=1) from failure
         finally:
             collector.close()
@@ -197,15 +197,15 @@ def backfill(
     try:
         sampling_seconds = resolve_sampling(hours, points, resolution)
     except ValueError as invalid_request:
-        logger.error("echantillonnage_invalide", cause=str(invalid_request))
+        logger.error("invalid_sampling", cause=str(invalid_request))
         raise typer.Exit(code=1) from invalid_request
 
     logger.info(
-        "rattrapage_demande",
+        "backfill_requested",
         site=site,
-        heures=hours,
+        hours=hours,
         resolution_s=round(sampling_seconds, 1),
-        requetes=max(1, ceil(hours * 3600 / sampling_seconds / MAX_POINTS_PER_REQUEST)),
+        requests=max(1, ceil(hours * 3600 / sampling_seconds / MAX_POINTS_PER_REQUEST)),
     )
 
     end_time = datetime.now(UTC).replace(tzinfo=None)
@@ -229,7 +229,7 @@ def backfill(
         try:
             rattrapage.run(site, start_time, end_time, sampling_seconds)
         except MockApiError as failure:
-            logger.error("rattrapage_impossible", site=site, cause=str(failure))
+            logger.error("backfill_failed", site=site, cause=str(failure))
             raise typer.Exit(code=1) from failure
         finally:
             publisher.flush()

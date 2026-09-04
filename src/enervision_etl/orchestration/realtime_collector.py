@@ -179,21 +179,21 @@ class RealtimeCollector:
 
         while max_cycles is None or len(reports) < max_cycles:
             if should_stop is not None and should_stop():
-                logger.info("boucle_interrompue", cycles=len(reports))
+                logger.info("loop_interrupted", cycles=len(reports))
                 break
 
             tick = scheduler.wait_for_next_tick(should_stop)
 
             # Un signal recu pendant l'attente doit sortir sans lancer un cycle de plus.
             if should_stop is not None and should_stop():
-                logger.info("boucle_interrompue", cycles=len(reports))
+                logger.info("loop_interrupted", cycles=len(reports))
                 break
 
             if tick.skipped_ticks:
                 logger.warning(
-                    "cycles_sautes",
-                    sautes=tick.skipped_ticks,
-                    retard_s=round(tick.lateness_seconds, 3),
+                    "cycles_skipped",
+                    skipped=tick.skipped_ticks,
+                    lateness_s=round(tick.lateness_seconds, 3),
                 )
             reports.append(self.run_cycle())
 
@@ -218,13 +218,13 @@ class RealtimeCollector:
 
         report.duration_seconds = perf_counter() - started_at
         logger.info(
-            "cycle_termine",
+            "cycle_completed",
             sites=len(self._collected_site_ids),
-            qualite=report.readings_by_quality,
-            alertes=report.published_alert_count,
-            alertes_injoignables=report.alerts_endpoint_failed,
-            echecs=report.failed_sites,
-            duree_s=round(report.duration_seconds, 3),
+            quality=report.readings_by_quality,
+            alerts=report.published_alert_count,
+            alerts_unavailable=report.alerts_endpoint_failed,
+            failures=report.failed_sites,
+            duration_s=round(report.duration_seconds, 3),
         )
         return report
 
@@ -244,7 +244,7 @@ class RealtimeCollector:
         )
         published_sites = self._registry_publisher.publish_changes(site_registry)
         if published_sites:
-            logger.info("referentiel_publie", sites=published_sites)
+            logger.info("site_registry_published", sites=published_sites)
         return published_sites
 
     def _publish_alerts(self, report: CycleReport) -> None:
@@ -265,7 +265,7 @@ class RealtimeCollector:
             active_alerts = self._api_client.fetch_active_alerts()
         except MockApiError as failure:
             report.alerts_endpoint_failed = True
-            logger.warning("alertes_injoignables", cause=str(failure))
+            logger.warning("alerts_unavailable", cause=str(failure))
             return
 
         for alert in active_alerts:
@@ -292,7 +292,7 @@ class RealtimeCollector:
             reading = self._api_client.fetch_current_reading(site_id)
         except MockApiError as failure:
             report.failed_sites.append(site_id)
-            logger.warning("site_injoignable", site=site_id, cause=str(failure))
+            logger.warning("site_unreachable", site=site_id, cause=str(failure))
             return
 
         normalized = normalize_reading(reading, self._source_timezone)
@@ -340,7 +340,7 @@ class RealtimeCollector:
         """Vide la destination avant de rendre la main."""
         pending = self._publisher.flush()
         if pending:
-            logger.error("messages_non_remis", en_attente=pending)
+            logger.error("messages_undelivered", pending=pending)
         self._publisher.close()
 
     def __enter__(self) -> "RealtimeCollector":
