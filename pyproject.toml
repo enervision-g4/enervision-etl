@@ -8,6 +8,9 @@ dependencies = [
     "pydantic-settings>=2.7",
     "requests>=2.32",
     "confluent-kafka>=2.6",
+    # Pilote Postgres du consumer. La variante binaire embarque libpq : l'etage
+    # final de l'image reste sans chaine de compilation.
+    "psycopg[binary]>=3.2",
     "prometheus-client>=0.21",
     "structlog>=24.4",
     "typer>=0.15",
@@ -17,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 enervision-etl = "enervision_etl.cli:application"
+enervision-consumer = "enervision_consumer.cli:application"
 
 [dependency-groups]
 dev = [
@@ -35,13 +39,18 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/enervision_contracts", "src/enervision_etl"]
+packages = ["src/enervision_contracts", "src/enervision_etl", "src/enervision_consumer"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # import-mode=importlib affranchit l'arborescence de tests de la contrainte de noms
 # de fichiers uniques, que le miroir des paquets rend probable.
-addopts = "-v --strict-markers --import-mode=importlib"
+# -m "not integration" par defaut : la suite doit passer sans infrastructure. Les
+# tests marques integration se lancent explicitement, voir tests/consumer/integration.
+addopts = "-v --strict-markers --import-mode=importlib -m 'not integration'"
+markers = [
+    "integration: necessite un PostgreSQL reel, exclu de la suite par defaut",
+]
 
 [tool.ruff]
 line-length = 100
