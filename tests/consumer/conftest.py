@@ -51,8 +51,10 @@ class FakeConnection:
         self,
         failure: Optional[Exception] = None,
         fetched_row: Optional[tuple[Any, ...]] = None,
+        journal: Optional[list[str]] = None,
     ) -> None:
         self.opened_cursor = FakeCursor(failure, fetched_row)
+        self.journal = journal if journal is not None else []
         self.commits = 0
         self.rollbacks = 0
         self.closed = False
@@ -62,6 +64,7 @@ class FakeConnection:
 
     def commit(self) -> None:
         self.commits += 1
+        self.journal.append("base")
 
     def rollback(self) -> None:
         self.rollbacks += 1
@@ -87,5 +90,13 @@ def failing_connection() -> Any:
 def connection_returning() -> Any:
     def build(fetched_row: Optional[tuple[Any, ...]]) -> FakeConnection:
         return FakeConnection(fetched_row=fetched_row)
+
+    return build
+
+
+@pytest.fixture
+def journalled_connection() -> Any:
+    def build(journal: list[str], fetched_row: Optional[tuple[Any, ...]] = None) -> FakeConnection:
+        return FakeConnection(fetched_row=fetched_row, journal=journal)
 
     return build
