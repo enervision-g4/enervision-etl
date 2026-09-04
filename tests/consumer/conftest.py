@@ -17,16 +17,25 @@ class FakeCursor:
         self,
         failure: Optional[Exception] = None,
         fetched_row: Optional[tuple[Any, ...]] = None,
+        failing_attempts: Optional[int] = None,
     ) -> None:
         self.statements: list[str] = []
         self.parameters: list[Sequence[Any]] = []
         self._failure = failure
+        self._remaining_failures = failing_attempts
         self.fetched_row = fetched_row
 
     def execute(self, statement: str, parameters: Optional[Sequence[Any]] = None) -> None:
         self.statements.append(statement)
         self.parameters.append(parameters if parameters is not None else ())
-        if self._failure is not None:
+        if self._failure is None:
+            return
+        # failing_attempts a None fait echouer indefiniment, un entier fait echouer ce
+        # nombre de fois puis laisse passer : de quoi rejouer un message apres remede.
+        if self._remaining_failures is None:
+            raise self._failure
+        if self._remaining_failures > 0:
+            self._remaining_failures -= 1
             raise self._failure
 
     def fetchone(self) -> Optional[tuple[Any, ...]]:
@@ -52,8 +61,9 @@ class FakeConnection:
         failure: Optional[Exception] = None,
         fetched_row: Optional[tuple[Any, ...]] = None,
         journal: Optional[list[str]] = None,
+        failing_attempts: Optional[int] = None,
     ) -> None:
-        self.opened_cursor = FakeCursor(failure, fetched_row)
+        self.opened_cursor = FakeCursor(failure, fetched_row, failing_attempts)
         self.journal = journal if journal is not None else []
         self.commits = 0
         self.rollbacks = 0
@@ -98,5 +108,19 @@ def connection_returning() -> Any:
 def journalled_connection() -> Any:
     def build(journal: list[str], fetched_row: Optional[tuple[Any, ...]] = None) -> FakeConnection:
         return FakeConnection(fetched_row=fetched_row, journal=journal)
+
+    return build
+
+
+@pytest.fixture
+def recovering_connection() -> Any:
+    def build(
+        failure: Exception,
+        failing_attempts: int,
+        journal: Optional[list[str]] = None,
+    ) -> FakeConnection:
+        return FakeConnection(
+            failure=failure, journal=journal, failing_attempts=failing_attempts
+        )
 
     return build

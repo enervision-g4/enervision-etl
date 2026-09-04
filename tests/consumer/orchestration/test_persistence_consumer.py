@@ -2,6 +2,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+import pytest
+from psycopg.errors import ForeignKeyViolation, UniqueViolation
+
+from enervision_consumer.load.errors import PersistenceError, UnknownSiteReferenceError
 from enervision_consumer.orchestration.persistence_consumer import PersistenceConsumer
 from enervision_contracts.envelope import (
     CollectionMode,
@@ -68,13 +72,32 @@ def imputed_message() -> FakeConsumerMessage:
     return FakeConsumerMessage(IMPUTED_TOPIC, envelope.model_dump_json().encode("utf-8"))
 
 
-def build_consumer(kafka: Any, connection: Any) -> PersistenceConsumer:
+class RecordingRegistryRefresh:
+    """Redrainage du referentiel, pilote par le test."""
+
+    def __init__(self, journal: Any = None, applied_sites: int = 3) -> None:
+        self.calls = 0
+        self._journal = journal if journal is not None else []
+        self._applied_sites = applied_sites
+
+    def __call__(self) -> int:
+        self.calls += 1
+        self._journal.append("referentiel")
+        return self._applied_sites
+
+
+def build_consumer(
+    kafka: Any,
+    connection: Any,
+    refresh: Any = None,
+) -> PersistenceConsumer:
     return PersistenceConsumer(
         consumer=kafka,
         connection=connection,
         site_topic=SITE_TOPIC,
         measure_raw_topic=RAW_TOPIC,
         measure_imputed_topic=IMPUTED_TOPIC,
+        refresh_site_registry=refresh if refresh is not None else RecordingRegistryRefresh(),
     )
 
 
@@ -138,3 +161,84 @@ def test_the_database_is_committed_before_the_offset(
     build_consumer(kafka, connection).run(max_messages=1)
 
     assert journal == ["base", "offset"]
+
+
+def test_the_registry_is_drained_before_the_first_message_is_handled(
+    consumer: Any,
+    journalled_connection: Any,
+) -> None:
+    # Kafka ne garantit aucun ordre entre topics et measure_raw.site_id est une cle
+    # etrangere : le referentiel doit precede les faits qui en dependent.
+    journal: list[str] = []
+    connection = journalled_connection(journal)
+    kafka = consumer([raw_message()], journal)
+    refresh = RecordingRegistryRefresh(journal)
+
+    build_consumer(kafka, connection, refresh).run(max_messages=1)
+
+    assert journal[0] == "referentiel"
+    assert refresh.calls == 1
+
+
+def test_an_unknown_site_is_retried_after_the_registry_is_drained_again(
+    consumer: Any,
+    recovering_connection: Any,
+) -> None:
+    # Cas courant : le site vient d'apparaitre et son message est encore en route.
+    # Redrainer le referentiel suffit, et le message passe a la seconde tentative.
+    connection = recovering_connection(ForeignKeyViolation("site absent"), 1)
+    kafka = consumer([raw_message()])
+    refresh = RecordingRegistryRefresh()
+
+    report = build_consumer(kafka, connection, refresh).run(max_messages=1)
+
+    assert refresh.calls == 2
+    assert connection.rollbacks == 1
+    assert report.raw_measures_written == 1
+    assert len(kafka.committed) == 1
+
+
+def test_a_site_that_stays_unknown_never_acquits_its_message(
+    consumer: Any,
+    failing_connection: Any,
+) -> None:
+    # Le redrainage n'a rien change : le site n'existe pas. L'offset reste en arriere
+    # pour que le message revienne au redemarrage, plutot que d'etre perdu en silence.
+    connection = failing_connection(ForeignKeyViolation("site absent"))
+    kafka = consumer([raw_message()])
+
+    with pytest.raises(UnknownSiteReferenceError):
+        build_consumer(kafka, connection).run(max_messages=1)
+
+    assert kafka.committed == []
+
+
+def test_a_failed_write_never_acquits_its_message(
+    consumer: Any,
+    failing_connection: Any,
+) -> None:
+    connection = failing_connection(UniqueViolation("contrainte inattendue"))
+    kafka = consumer([raw_message()])
+
+    with pytest.raises(PersistenceError):
+        build_consumer(kafka, connection).run(max_messages=1)
+
+    assert kafka.committed == []
+    assert connection.commits == 0
+
+
+def test_an_imputed_measure_without_its_raw_counterpart_is_stored_unlinked(
+    consumer: Any,
+    connection: Any,
+) -> None:
+    # Attendre la mesure brute serait un interblocage : elle ne peut arriver que par
+    # la boucle qu'on bloquerait. La ligne est donc ecrite avec un lien vide, ce que
+    # le schema autorise, et comptee pour rester visible.
+    kafka = consumer([imputed_message()])
+
+    report = build_consumer(kafka, connection).run(max_messages=1)
+
+    assert report.imputed_measures_written == 1
+    assert report.unlinked_imputed_measures == 1
+    assert connection.opened_cursor.parameters[1][0] is None
+    assert len(kafka.committed) == 1
