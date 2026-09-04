@@ -252,7 +252,7 @@ class RealtimeCollector:
 
         Un seul appel suffit pour tout le parc, la ou les mesures en demandent un par
         site. Aucun filtrage n'est applique : le topic des alertes n'est pas compacte,
-        et la deduplication des alertes encore actives revient au consumer.
+        et le dedoublonnage des remises revient au consumer.
 
         Une panne de cet endpoint reste circonscrite : elle est journalisee et le
         cycle continue, sans quoi un seul service muet priverait tout le parc de ses

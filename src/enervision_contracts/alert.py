@@ -1,8 +1,13 @@
 """Alertes de consommation renvoyees par /api/v1/alerts.
 
 L'identifiant attribue par l'API est conserve tel quel : c'est lui qui rend l'insertion
-idempotente cote consumer, une meme alerte active etant renvoyee a chaque interrogation
-tant qu'elle n'est pas resolue.
+idempotente cote consumer, en absorbant les remises multiples de Kafka.
+
+Mesure faite sur l'instance : elle fabrique une liste neuve a chaque appel plutot que de
+renvoyer des alertes actives durables, deux interrogations espacees de vingt secondes
+n'ayant aucune alerte en commun. Cet identifiant n'a donc de stabilite qu'au sein d'un
+message, ce qui suffit a son role, mais ne permet pas de reconnaitre deux fois la meme
+alerte.
 """
 
 from datetime import datetime

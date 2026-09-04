@@ -192,7 +192,7 @@ def test_an_absent_raw_measure_is_reported_without_raising(
     assert measure_imputed_repository.find_raw_id(connection, "SITE002", MEASURED_AT) is None
 
 
-def test_an_alert_still_active_is_absorbed_at_each_cycle(
+def test_a_redelivered_alert_is_absorbed(
     connection: psycopg.Connection,
     known_site: SitePayload,
 ) -> None:

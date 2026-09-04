@@ -48,10 +48,10 @@ def test_the_technical_identifier_is_left_to_the_database(connection: Any) -> No
     )
 
 
-def test_an_alert_still_active_is_absorbed_at_each_cycle(connection: Any) -> None:
-    # Ici le rejeu n'est pas accidentel : le collecteur interroge /api/v1/alerts a
-    # chaque cycle et l'API renvoie la meme alerte tant qu'elle n'est pas resolue.
-    # Sans cette contrainte, une alerte d'une heure creerait soixante lignes.
+def test_a_redelivered_alert_is_absorbed(connection: Any) -> None:
+    # Kafka remet chaque message au moins une fois : au redemarrage, un message dont
+    # l'offset n'avait pas ete acquitte revient a l'identique. L'identifiant de la
+    # source suffit a reconnaitre la ligne deja ecrite.
     insert_if_new(connection, build_alert())
 
     statement = connection.opened_cursor.statements[0]
