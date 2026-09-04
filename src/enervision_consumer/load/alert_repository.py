@@ -1,8 +1,12 @@
 """Ecriture des alertes de consommation.
 
-Le collecteur interroge l'API a chaque cycle et celle ci renvoie la meme alerte tant
-qu'elle reste active. Le rejeu n'est donc pas accidentel ici mais permanent, et c'est
-l'identifiant attribue par la source qui evite d'accumuler une ligne par cycle.
+L'insertion est idempotente sur l'identifiant attribue par la source, ce qui absorbe la
+remise d'un meme message par Kafka, au meme titre que pour les mesures.
+
+Elle ne dedoublonne rien a la source, en revanche : l'instance mock fabrique une liste
+d'alertes neuve a chaque appel, sans jamais reproposer les precedentes. La table accumule
+donc autant d'alertes que le collecteur en releve. C'est une propriete du simulateur, pas
+du pipeline.
 """
 
 import psycopg
@@ -29,7 +33,7 @@ def insert_if_new(connection: ConnectionLike, alert: AlertPayload) -> None:
     """Ecrit une alerte, sans effet si elle est deja en base.
 
     alert_id est laisse a la base, qui l'engendre : c'est source_alert_id qui identifie
-    l'alerte du point de vue metier et rend les republications inoffensives.
+    l'alerte du point de vue metier et rend les remises multiples inoffensives.
 
     Args:
         connection: Connexion ouverte vers la base.
