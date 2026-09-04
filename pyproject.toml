@@ -45,7 +45,12 @@ packages = ["src/enervision_contracts", "src/enervision_etl", "src/enervision_co
 testpaths = ["tests"]
 # import-mode=importlib affranchit l'arborescence de tests de la contrainte de noms
 # de fichiers uniques, que le miroir des paquets rend probable.
-addopts = "-v --strict-markers --import-mode=importlib"
+# -m "not integration" par defaut : la suite doit passer sans infrastructure. Les
+# tests marques integration se lancent explicitement, voir tests/consumer/integration.
+addopts = "-v --strict-markers --import-mode=importlib -m 'not integration'"
+markers = [
+    "integration: necessite un PostgreSQL reel, exclu de la suite par defaut",
+]
 
 [tool.ruff]
 line-length = 100
