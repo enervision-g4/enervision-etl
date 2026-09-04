@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 enervision-etl = "enervision_etl.cli:application"
+enervision-consumer = "enervision_consumer.cli:application"
 
 [dependency-groups]
 dev = [
