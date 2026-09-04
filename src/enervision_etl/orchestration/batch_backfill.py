@@ -123,7 +123,7 @@ class BatchBackfill:
         )
         report = BackfillReport(collected_measures=len(raw_series))
         if not raw_series:
-            logger.warning("fenetre_vide", site=site_id)
+            logger.warning("empty_window", site=site_id)
             return report
 
         series = [normalize_reading(reading, self._source_timezone) for reading in raw_series]
@@ -133,14 +133,14 @@ class BatchBackfill:
 
         if report.refused_as_degenerate and not self._publish_degenerate_windows:
             logger.warning(
-                "fenetre_degeneree_refusee",
+                "degenerate_window_refused",
                 site=site_id,
-                mesures=len(series),
-                taux_nul=round(report.null_ratio, 3),
-                raison="le site etait en panne au moment de l'appel, la periode entiere "
-                "est vide : ce n'est pas un historique",
-                remedes="essayer un autre site, reessayer plus tard, ou forcer la "
-                "publication avec --force-degenerate",
+                measures=len(series),
+                null_ratio=round(report.null_ratio, 3),
+                reason="the site was down when the call was made, the whole period is "
+                "empty: this is not a history",
+                remedies="try another site, retry later, or force publication with "
+                "--force-degenerate",
             )
             return report
 
@@ -160,10 +160,10 @@ class BatchBackfill:
 
         report.published_measures = len(series)
         logger.info(
-            "rattrapage_termine",
+            "backfill_completed",
             site=site_id,
-            mesures=report.published_measures,
-            taux_nul=round(report.null_ratio, 3),
+            measures=report.published_measures,
+            null_ratio=round(report.null_ratio, 3),
         )
         return report
 

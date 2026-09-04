@@ -169,11 +169,11 @@ class MockApiClient:
         )
         if expected_chunks >= CHUNKS_WORTH_WARNING_ABOUT:
             logger.warning(
-                "fenetre_exigeante",
+                "demanding_window",
                 site=site_id,
-                requetes=expected_chunks,
-                conseil="une rafale de requetes degrade l'instance mock, qui renvoie "
-                "alors des series entierement nulles : reduire la periode ou augmenter "
+                requests=expected_chunks,
+                advice="a burst of requests degrades the mock instance, which then "
+                "returns fully null series: narrow the period or raise "
                 "API_MOCK_MIN_REQUEST_INTERVAL_SECONDS",
             )
 
