@@ -15,6 +15,7 @@ d'environnement que `enervision-etl backfill`) :
 
 import argparse
 import calendar
+import itertools
 import sys
 from datetime import UTC, datetime
 
@@ -48,8 +49,7 @@ def months_before(reference: datetime, months: int) -> datetime:
 
 
 def monthly_windows(total_months: int, end_time: datetime) -> list[tuple[datetime, datetime]]:
-    """Decoupe une profondeur en mois calendaires en fenetres jointives, plus ancien
-    en premier.
+    """Decoupe une profondeur en mois calendaires en fenetres jointives (plus ancien en premier).
 
     Args:
         total_months: Nombre de mois a couvrir, en remontant depuis end_time.
@@ -59,7 +59,7 @@ def monthly_windows(total_months: int, end_time: datetime) -> list[tuple[datetim
         Les fenetres (debut inclus, fin exclue), de la plus ancienne a la plus recente.
     """
     boundaries = [months_before(end_time, k) for k in range(total_months, -1, -1)]
-    return list(zip(boundaries[:-1], boundaries[1:], strict=True))
+    return list(itertools.pairwise(boundaries))
 
 
 def main() -> int:
