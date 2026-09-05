@@ -156,9 +156,7 @@ def test_normalize_alert_keeps_an_absent_measurement_null(
     active_alerts_payload: list[dict[str, Any]],
 ) -> None:
     # Une alerte sans mesure associee ne doit pas ressortir a zero kW.
-    alert = Alert.model_validate(
-        active_alerts_payload[0] | {"value": None, "threshold": None}
-    )
+    alert = Alert.model_validate(active_alerts_payload[0] | {"value": None, "threshold": None})
 
     normalized = normalize_alert(alert, "UTC")
 

@@ -15,9 +15,7 @@ from typing import Final, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-KNOWN_ALERT_SEVERITIES: Final[frozenset[str]] = frozenset(
-    {"low", "medium", "high", "critical"}
-)
+KNOWN_ALERT_SEVERITIES: Final[frozenset[str]] = frozenset({"low", "medium", "high", "critical"})
 """Severites documentees. La liste n'est pas fermee cote validation."""
 
 KNOWN_ALERT_TYPES: Final[frozenset[str]] = frozenset(

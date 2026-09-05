@@ -310,9 +310,7 @@ def _validate_series(readings: list[EnergyReading], max_gap_measures: int) -> No
         ValueError: Si un invariant est viole.
     """
     if max_gap_measures <= 0:
-        raise ValueError(
-            f"max_gap_measures must be strictly positive, received {max_gap_measures}"
-        )
+        raise ValueError(f"max_gap_measures must be strictly positive, received {max_gap_measures}")
 
     site_identifiers = {reading.site_id for reading in readings}
     if len(site_identifiers) > 1:

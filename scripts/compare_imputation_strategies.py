@@ -107,8 +107,10 @@ variation_by_type: dict[str, list[float]] = defaultdict(list)
 runs_by_type: dict[str, int] = defaultdict(int)
 type_by_site: dict[str, str] = {}
 
-print(f"Resolution {resolution:.0f} s, {nombre_fenetres} fenetres de "
-      f"{DUREE_FENETRE_HEURES} h par site")
+print(
+    f"Resolution {resolution:.0f} s, {nombre_fenetres} fenetres de "
+    f"{DUREE_FENETRE_HEURES} h par site"
+)
 print("Collecte en cours...\n")
 
 with ResilientHttpClient(settings.api_mock_base_url, 20.0) as http:
@@ -129,9 +131,7 @@ with ResilientHttpClient(settings.api_mock_base_url, 20.0) as http:
             except MockApiError as failure:
                 print(f"  {site_id} fenetre {window_index} : {failure}")
                 continue
-            series = [
-                normalize_reading(m, settings.api_mock_source_timezone) for m in raw_readings
-            ]
+            series = [normalize_reading(m, settings.api_mock_source_timezone) for m in raw_readings]
             for run in continuous_runs(series):
                 carried, interpolated, variation = errors_on_run(run)
                 carry_errors_by_type[site_type].extend(carried)
@@ -151,8 +151,10 @@ def column(valeur: Optional[float]) -> str:
 
 
 print(f"\n{'=' * 82}\nERREUR MOYENNE PAR TYPE DE SITE\n{'=' * 82}")
-print(f"  {'type':<12}{'plages':>8}{'trous':>8}{'ffill %':>10}{'interp %':>10}"
-      f"{'signal %':>10}  meilleure")
+print(
+    f"  {'type':<12}{'plages':>8}{'trous':>8}{'ffill %':>10}{'interp %':>10}"
+    f"{'signal %':>10}  meilleure"
+)
 print("  " + "-" * 76)
 
 for site_type in sorted(runs_by_type):
@@ -162,13 +164,13 @@ for site_type in sorted(runs_by_type):
     if mean_carry_error is None or mean_interpolation_error is None:
         best = "indeterminee"
     else:
-        best = (
-            "interpolation" if mean_interpolation_error < mean_carry_error else "forward_fill"
-        )
-    print(f"  {site_type:<12}{runs_by_type[site_type]:>8}"
-          f"{len(carry_errors_by_type[site_type]):>8}"
-          f"{column(mean_carry_error)}{column(mean_interpolation_error)}"
-          f"{column(mean_variation)}  {best}")
+        best = "interpolation" if mean_interpolation_error < mean_carry_error else "forward_fill"
+    print(
+        f"  {site_type:<12}{runs_by_type[site_type]:>8}"
+        f"{len(carry_errors_by_type[site_type]):>8}"
+        f"{column(mean_carry_error)}{column(mean_interpolation_error)}"
+        f"{column(mean_variation)}  {best}"
+    )
 
 all_carry_errors = [e for values in carry_errors_by_type.values() for e in values]
 all_interpolation_errors = [e for values in interpolation_errors_by_type.values() for e in values]

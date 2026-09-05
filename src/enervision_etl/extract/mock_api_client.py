@@ -184,9 +184,7 @@ class MockApiClient:
                 # prendrait pour complet et les mesures manquantes passeraient inapercues.
                 raise WindowTooLargeError(
                     requested_hours=(end_time - start_time).total_seconds() / 3600,
-                    coverable_hours=(
-                        chunk_duration.total_seconds() * MAX_CHUNKS_PER_WINDOW / 3600
-                    ),
+                    coverable_hours=(chunk_duration.total_seconds() * MAX_CHUNKS_PER_WINDOW / 3600),
                 )
 
             chunk_end_time = min(chunk_start_time + chunk_duration, end_time)

@@ -239,9 +239,7 @@ class RealtimeCollector:
 
         site_registry = self._api_client.fetch_site_registry()
         self._site_types = {site.site_id: site.site_type for site in site_registry}
-        self._collected_site_ids = resolve_site_identifiers(
-            self._configured_sites, site_registry
-        )
+        self._collected_site_ids = resolve_site_identifiers(self._configured_sites, site_registry)
         published_sites = self._registry_publisher.publish_changes(site_registry)
         if published_sites:
             logger.info("site_registry_published", sites=published_sites)
@@ -320,9 +318,7 @@ class RealtimeCollector:
             site_id: Site concerne.
             reading: Mesure normalisee qui vient d'arriver.
         """
-        window = self._recent_readings.setdefault(
-            site_id, deque(maxlen=self._max_gap_measures + 2)
-        )
+        window = self._recent_readings.setdefault(site_id, deque(maxlen=self._max_gap_measures + 2))
         window.append(reading)
 
         imputed_window = impute_series(

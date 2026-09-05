@@ -89,8 +89,10 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
         return [normalize_reading(m, settings.api_mock_source_timezone) for m in raw_readings]
 
     series = load_messages(requested_site)
-    print(f"Site {requested_site} : {len(series)} mesures sur {hours} h, "
-          f"une toutes les {resolution:.0f} s")
+    print(
+        f"Site {requested_site} : {len(series)} mesures sur {hours} h, "
+        f"une toutes les {resolution:.0f} s"
+    )
 
     section_title("VOLET 1 : ce que l'imputation fait des trous reellement presents")
     if not series:
@@ -145,17 +147,21 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
 
 values = [m.consumption_kw for m in continuous_run if m.consumption_kw is not None]
 neighbour_deviations = [
-    100 * abs(suivante - courante) / courante
-    for courante, suivante in pairwise(values)
-    if courante
+    100 * abs(suivante - courante) / courante for courante, suivante in pairwise(values) if courante
 ]
 mean_variation = sum(neighbour_deviations) / len(neighbour_deviations)
-print(f"\n  Plage continue : {len(continuous_run)} mesures, "
-      f"de {continuous_run[0].timestamp:%H:%M} a {continuous_run[-1].timestamp:%H:%M}")
-print(f"  Consommation : min {min(values):.1f} kW, max {max(values):.1f} kW, "
-      f"moyenne {sum(values) / len(values):.1f} kW")
-print(f"  Variation entre deux mesures voisines : {mean_variation:.1f} % en moyenne, "
-      f"{max(neighbour_deviations):.1f} % au pire")
+print(
+    f"\n  Plage continue : {len(continuous_run)} mesures, "
+    f"de {continuous_run[0].timestamp:%H:%M} a {continuous_run[-1].timestamp:%H:%M}"
+)
+print(
+    f"  Consommation : min {min(values):.1f} kW, max {max(values):.1f} kW, "
+    f"moyenne {sum(values) / len(values):.1f} kW"
+)
+print(
+    f"  Variation entre deux mesures voisines : {mean_variation:.1f} % en moyenne, "
+    f"{max(neighbour_deviations):.1f} % au pire"
+)
 print("\n  Cette variation est le plancher incompressible : aucune strategie ne peut")
 print("  reconstruire mieux que ce que le signal bouge de lui meme.")
 
@@ -173,8 +179,9 @@ print("  un trou de 1 mesure, un trou de 2, un trou de 3, separes par des mesure
 by_carry = forward_fill_series(punched_series, MAX_GAP_MEASURES)
 by_interpolation = linear_interpolation_series(punched_series, MAX_GAP_MEASURES)
 
-print(f"\n  {'heure':<7}{'ANCRE':>9}{'VRAIE':>9}{'ffill':>10}{'err %':>8}"
-      f"{'interp':>10}{'err %':>8}")
+print(
+    f"\n  {'heure':<7}{'ANCRE':>9}{'VRAIE':>9}{'ffill':>10}{'err %':>8}{'interp':>10}{'err %':>8}"
+)
 print("  " + "-" * 72)
 
 carry_errors: list[float] = []
@@ -210,16 +217,14 @@ for name, erreurs in (
     if not erreurs:
         print(f"  {name} aucun trou comble")
         continue
-    print(f"  {name} erreur moyenne {sum(erreurs) / len(erreurs):>6.2f} %"
-          f"   maximale {max(erreurs):>6.2f} %   ({len(erreurs)}/{len(positions)} combles)")
+    print(
+        f"  {name} erreur moyenne {sum(erreurs) / len(erreurs):>6.2f} %"
+        f"   maximale {max(erreurs):>6.2f} %   ({len(erreurs)}/{len(positions)} combles)"
+    )
 print(f"  variation du signal  {mean_variation:>20.2f} %   (plancher incompressible)")
 
 if carry_errors and interpolation_errors:
     mean_carry = sum(carry_errors) / len(carry_errors)
     mean_interpolation = sum(interpolation_errors) / len(interpolation_errors)
-    best = (
-        "linear_interpolation"
-        if mean_interpolation < mean_carry
-        else "forward_fill"
-    )
+    best = "linear_interpolation" if mean_interpolation < mean_carry else "forward_fill"
     print(f"\n  Meilleure sur ce signal : {best}")

@@ -11,8 +11,7 @@ from enervision_etl.orchestration.graceful_shutdown import ShutdownRequest
 def restored_handlers() -> Iterator[None]:
     """Restaure les gestionnaires de signaux, qui sont un etat global du processus."""
     previous = {
-        received: signal.getsignal(received)
-        for received in (signal.SIGTERM, signal.SIGINT)
+        received: signal.getsignal(received) for received in (signal.SIGTERM, signal.SIGINT)
     }
     yield
     for received, handler in previous.items():

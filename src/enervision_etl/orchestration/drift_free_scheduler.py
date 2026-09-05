@@ -95,9 +95,7 @@ class DriftFreeScheduler:
 
         if remaining_seconds > 0:
             self._sleep_in_slices(remaining_seconds, should_stop)
-            tick = SchedulerTick(
-                index=self._next_index, skipped_ticks=0, lateness_seconds=0.0
-            )
+            tick = SchedulerTick(index=self._next_index, skipped_ticks=0, lateness_seconds=0.0)
             self._next_index += 1
             return tick
 

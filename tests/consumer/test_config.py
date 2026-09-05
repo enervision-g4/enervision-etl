@@ -76,18 +76,17 @@ def test_both_postgres_url_schemes_are_accepted(
 ) -> None:
     # enervision-devops publie ses URL en postgres://, psycopg accepte les deux.
     for url in ("postgres://u:p@h:5432/d", "postgresql://u:p@h:5432/d"):
-        assert build_persistence(
-            database_url=url, kafka_bootstrap_servers=VALID_BROKER
-        ).database_url == url
+        assert (
+            build_persistence(database_url=url, kafka_bootstrap_servers=VALID_BROKER).database_url
+            == url
+        )
 
 
 def test_an_unknown_url_scheme_is_refused(
     isolated_environment: pytest.MonkeyPatch,
 ) -> None:
     with pytest.raises(ValidationError):
-        build_persistence(
-            database_url="mysql://u:p@h:3306/d", kafka_bootstrap_servers=VALID_BROKER
-        )
+        build_persistence(database_url="mysql://u:p@h:3306/d", kafka_bootstrap_servers=VALID_BROKER)
 
 
 def test_windows_line_endings_do_not_corrupt_values(
@@ -109,9 +108,7 @@ def test_the_two_services_default_to_distinct_consumer_groups(
     persistance = build_persistence(
         database_url=VALID_DATABASE_URL, kafka_bootstrap_servers=VALID_BROKER
     )
-    alerting = build_alerting(
-        database_url=VALID_DATABASE_URL, kafka_bootstrap_servers=VALID_BROKER
-    )
+    alerting = build_alerting(database_url=VALID_DATABASE_URL, kafka_bootstrap_servers=VALID_BROKER)
 
     assert persistance.kafka_consumer_group == "enervision-consumer-persistence"
     assert alerting.kafka_consumer_group == "enervision-consumer-alerting"
@@ -132,9 +129,7 @@ def test_the_registry_drain_uses_its_own_group(
 def test_each_service_declares_only_the_topics_it_consumes(
     isolated_environment: pytest.MonkeyPatch,
 ) -> None:
-    alerting = build_alerting(
-        database_url=VALID_DATABASE_URL, kafka_bootstrap_servers=VALID_BROKER
-    )
+    alerting = build_alerting(database_url=VALID_DATABASE_URL, kafka_bootstrap_servers=VALID_BROKER)
 
     assert alerting.kafka_topic_alert == "enervision.alert"
     assert not hasattr(alerting, "kafka_topic_measure_raw")

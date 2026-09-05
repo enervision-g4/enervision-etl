@@ -119,8 +119,6 @@ def recovering_connection() -> Any:
         failing_attempts: int,
         journal: Optional[list[str]] = None,
     ) -> FakeConnection:
-        return FakeConnection(
-            failure=failure, journal=journal, failing_attempts=failing_attempts
-        )
+        return FakeConnection(failure=failure, journal=journal, failing_attempts=failing_attempts)
 
     return build

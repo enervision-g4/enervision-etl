@@ -59,12 +59,9 @@ with ResilientHttpClient(settings.api_mock_base_url, 15.0) as http:
                 if detail["status"] != "ok"
             ]
             resume = (
-                "pannes: " + ", ".join(failing_sensors)
-                if failing_sensors
-                else "tous capteurs ok"
+                "pannes: " + ", ".join(failing_sensors) if failing_sensors else "tous capteurs ok"
             )
-            print(f"  {site_id}  overall={sensor_state['overall']:<9} "
-                  f"{resume}{marque}")
+            print(f"  {site_id}  overall={sensor_state['overall']:<9} {resume}{marque}")
     except MockApiError as failure:
         print(f"  Endpoint indisponible : {failure}")
 
@@ -109,21 +106,27 @@ with ResilientHttpClient(settings.api_mock_base_url, 15.0) as http:
     if not sample:
         print("  Aucune mesure renvoyee sur cette fenetre.")
     for measurement in sample:
-        print(f"  {measurement['timestamp']}  kw={measurement['consumption_kw']!s:<8} "
-              f"temp={measurement['temperature_celsius']!s:<6} "
-              f"quality={measurement['data_quality']:<9} {measurement['null_reasons']}")
+        print(
+            f"  {measurement['timestamp']}  kw={measurement['consumption_kw']!s:<8} "
+            f"temp={measurement['temperature_celsius']!s:<6} "
+            f"quality={measurement['data_quality']:<9} {measurement['null_reasons']}"
+        )
 
     section_title("6. Comparaison directe avec /current au meme instant")
     instantane = http.get_json(f"/api/v1/sites/{CIBLE}/current", site_id=CIBLE)
-    print(f"  /current   : kw={instantane['consumption_kw']}  "
-          f"quality={instantane['data_quality']}  {instantane['null_reasons']}")
+    print(
+        f"  /current   : kw={instantane['consumption_kw']}  "
+        f"quality={instantane['data_quality']}  {instantane['null_reasons']}"
+    )
     dernieres = fetch_window(maintenant - timedelta(minutes=10), maintenant, 10)
     if not dernieres:
         print("  /readings  : aucune mesure sur les 10 dernieres minutes")
     else:
         derniere = dernieres[-1]
-        print(f"  /readings  : kw={derniere['consumption_kw']}  "
-              f"quality={derniere['data_quality']}  {derniere['null_reasons']}")
+        print(
+            f"  /readings  : kw={derniere['consumption_kw']}  "
+            f"quality={derniere['data_quality']}  {derniere['null_reasons']}"
+        )
         print("\n  Ces deux lignes decrivent le meme site a la meme minute. Si l'une est")
         print("  saine et l'autre nulle, les deux endpoints ne partagent pas le meme")
         print("  simulateur, et le mode batch ne peut pas servir de reference.")
