@@ -15,6 +15,7 @@ d'environnement que `enervision-etl backfill`) :
 
 import argparse
 import calendar
+import itertools
 import sys
 from datetime import UTC, datetime
 from itertools import pairwise
