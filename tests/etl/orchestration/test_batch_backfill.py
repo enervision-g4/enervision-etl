@@ -159,9 +159,7 @@ def test_a_degenerate_window_is_refused(
 ) -> None:
     # Une serie integralement nulle n'est pas un historique : c'est l'etat d'une panne
     # au moment de l'appel, projete par le simulateur sur toute la periode demandee.
-    api_client = ScriptedApiClient(
-        registry, {"SITE002": build_series("SITE002", [None] * 10)}
-    )
+    api_client = ScriptedApiClient(registry, {"SITE002": build_series("SITE002", [None] * 10)})
 
     report = build_backfill(api_client, publisher).run("SITE002", WINDOW_START, WINDOW_END)
 
@@ -174,9 +172,7 @@ def test_a_degenerate_window_can_be_published_on_purpose(
     registry: list[Site],
     publisher: RecordingPublisher,
 ) -> None:
-    api_client = ScriptedApiClient(
-        registry, {"SITE002": build_series("SITE002", [None] * 10)}
-    )
+    api_client = ScriptedApiClient(registry, {"SITE002": build_series("SITE002", [None] * 10)})
 
     report = build_backfill(api_client, publisher, publish_degenerate_windows=True).run(
         "SITE002", WINDOW_START, WINDOW_END
@@ -240,9 +236,7 @@ def test_the_requested_resolution_is_forwarded(
     registry: list[Site],
     publisher: RecordingPublisher,
 ) -> None:
-    api_client = ScriptedApiClient(
-        registry, {"SITE002": build_series("SITE002", [100.0, 110.0])}
-    )
+    api_client = ScriptedApiClient(registry, {"SITE002": build_series("SITE002", [100.0, 110.0])})
 
     build_backfill(api_client, publisher).run(
         "SITE002", WINDOW_START, WINDOW_END, resolution_seconds=300.0
@@ -255,9 +249,7 @@ def test_the_batch_collection_mode_is_declared(
     registry: list[Site],
     publisher: RecordingPublisher,
 ) -> None:
-    api_client = ScriptedApiClient(
-        registry, {"SITE002": build_series("SITE002", [100.0, 110.0])}
-    )
+    api_client = ScriptedApiClient(registry, {"SITE002": build_series("SITE002", [100.0, 110.0])})
 
     build_backfill(api_client, publisher).run("SITE002", WINDOW_START, WINDOW_END)
 

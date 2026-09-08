@@ -60,6 +60,4 @@ def resolve_site_identifiers(
     if unknown_site_ids:
         raise UnknownConfiguredSiteError(unknown_site_ids)
 
-    return [
-        site_id for site_id in exposed_site_ids if site_id.upper() in requested_normalized_ids
-    ]
+    return [site_id for site_id in exposed_site_ids if site_id.upper() in requested_normalized_ids]

@@ -144,8 +144,10 @@ def test_the_first_cycle_publishes_the_site_registry(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, 100.0)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, 100.0)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     build_collector(api_client, publisher).run_cycle()
@@ -159,8 +161,10 @@ def test_each_configured_site_is_polled_once_per_cycle(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, 100.0)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, 100.0)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     build_collector(api_client, publisher).run_cycle()
@@ -174,8 +178,10 @@ def test_every_measurement_is_published_raw(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, 100.0)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, 100.0)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     build_collector(api_client, publisher).run_cycle()
@@ -191,8 +197,10 @@ def test_a_measurement_with_nulls_is_published_untouched(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, None)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, None)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     build_collector(api_client, publisher).run_cycle()
@@ -208,8 +216,10 @@ def test_a_site_failure_does_not_interrupt_the_others(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [SiteNotFoundError("SITE001")],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [SiteNotFoundError("SITE001")],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     report = build_collector(api_client, publisher).run_cycle()
@@ -224,8 +234,10 @@ def test_the_cycle_reports_the_quality_distribution(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, None)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, None)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     report = build_collector(api_client, publisher).run_cycle()
@@ -263,8 +275,10 @@ def test_an_unfillable_gap_stays_null_in_the_imputed_stream(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, None)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, None)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     build_collector(api_client, publisher).run_cycle()
@@ -347,8 +361,10 @@ def test_the_cycle_duration_is_measured(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, 100.0)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, 100.0)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
 
     report = build_collector(api_client, publisher).run_cycle()
@@ -405,8 +421,10 @@ def test_a_started_cycle_always_completes_before_stopping(
     # Interrompre au milieu publierait une photo partielle du parc.
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, 100.0)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, 100.0)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
     collector = build_collector(api_client, publisher)
 
@@ -449,8 +467,10 @@ def test_an_unreachable_cadence_is_reported_at_startup(
     # Avec 2 sites espaces de 40 s, un cycle dure 80 s : il ne peut pas tenir dans 60 s.
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, 100.0)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, 100.0)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
     collector = build_collector(api_client, publisher)
     collector.run_cycle()
@@ -469,8 +489,10 @@ def test_a_reachable_cadence_reports_no_shortfall(
 ) -> None:
     api_client = ScriptedApiClient(
         registry,
-        {"SITE001": [build_reading("SITE001", 0, 100.0)],
-         "SITE002": [build_reading("SITE002", 0, 500.0)]},
+        {
+            "SITE001": [build_reading("SITE001", 0, 100.0)],
+            "SITE002": [build_reading("SITE002", 0, 500.0)],
+        },
     )
     collector = build_collector(api_client, publisher)
     collector.run_cycle()
@@ -531,9 +553,7 @@ def test_alerts_are_fetched_once_per_cycle_not_once_per_site(
     registry: list[Site],
     publisher: RecordingPublisher,
 ) -> None:
-    api_client = ScriptedApiClient(
-        registry, nominal_readings(), alerts=[build_alert("SITE001", 5)]
-    )
+    api_client = ScriptedApiClient(registry, nominal_readings(), alerts=[build_alert("SITE001", 5)])
 
     build_collector(api_client, publisher).run_cycle()
 

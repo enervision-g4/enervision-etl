@@ -57,9 +57,7 @@ def registry(site_registry_payload: list[dict[str, Any]]) -> list[Site]:
 
 def published_keys(captured_output: io.StringIO) -> list[str]:
     return [
-        json.loads(line)["key"]
-        for line in captured_output.getvalue().splitlines()
-        if line.strip()
+        json.loads(line)["key"] for line in captured_output.getvalue().splitlines() if line.strip()
     ]
 
 

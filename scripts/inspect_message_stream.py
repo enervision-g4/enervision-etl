@@ -81,8 +81,10 @@ if sites:
     section_title("2. Referentiel publie")
     for message in sites:
         fiche = message["value"]["payload"]
-        print(f"  {fiche['site_id']}  {fiche['site_type']:<12} "
-              f"{fiche['capacity_kw']:>7.0f} kW  {fiche['site_name']}")
+        print(
+            f"  {fiche['site_id']}  {fiche['site_type']:<12} "
+            f"{fiche['capacity_kw']:>7.0f} kW  {fiche['site_name']}"
+        )
 
 if raw_readings:
     section_title("3. Qualite des mesures brutes")
@@ -91,9 +93,7 @@ if raw_readings:
         part = 100 * count / len(raw_readings)
         print(f"  {niveau:<12} {count:>6}  ({part:5.1f} %)")
 
-    causes = Counter(
-        cause for m in raw_readings for cause in m["value"]["payload"]["null_reasons"]
-    )
+    causes = Counter(cause for m in raw_readings for cause in m["value"]["payload"]["null_reasons"])
     print(f"\n  Pannes de capteurs rencontrees : {dict(causes) if causes else 'aucune'}")
 
     manquantes = sum(1 for m in raw_readings if m["value"]["payload"]["consumption_kw"] is None)
@@ -122,8 +122,10 @@ if imputed_readings:
                 continue
             print(f"  {fiche['site_id']}  {fiche['timestamp']}")
             print(f"    brut    consumption_kw = {twin['value']['payload']['consumption_kw']}")
-            print(f"    impute  consumption_kw = {fiche['consumption_kw']}"
-                  f"   ({fiche['imputation_method']})")
+            print(
+                f"    impute  consumption_kw = {fiche['consumption_kw']}"
+                f"   ({fiche['imputation_method']})"
+            )
             shown += 1
             if shown == 3:
                 break
@@ -142,14 +144,16 @@ for message in messages:
         anomalies.append(f"horodatage sans fuseau UTC : {timestamp}")
 
 checks = [
-    ("cle de partition egale au site", "cle" ),
+    ("cle de partition egale au site", "cle"),
     ("version de schema constante", "version"),
     ("horodatages en UTC", "horodatage"),
 ]
 for label, prefix in checks:
     offenders = [a for a in anomalies if a.startswith(prefix)]
-    print(f"  {'ok ' if not offenders else 'NON'} {label}"
-          + (f"  ({len(offenders)} ecarts)" if offenders else ""))
+    print(
+        f"  {'ok ' if not offenders else 'NON'} {label}"
+        + (f"  ({len(offenders)} ecarts)" if offenders else "")
+    )
 
 if raw_readings and imputed_readings:
     matching_timestamps = {
@@ -158,8 +162,10 @@ if raw_readings and imputed_readings:
         (m["value"]["payload"]["site_id"], m["value"]["payload"]["timestamp"])
         for m in imputed_readings
     }
-    print(f"  {'ok ' if matching_timestamps else 'NON'} "
-          "une mesure imputee par mesure brute, memes horodatages")
+    print(
+        f"  {'ok ' if matching_timestamps else 'NON'} "
+        "une mesure imputee par mesure brute, memes horodatages"
+    )
 
 if anomalies:
     print(f"\n  {len(anomalies)} anomalie(s) :")

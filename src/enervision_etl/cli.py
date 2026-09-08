@@ -169,8 +169,7 @@ def backfill(
     hours: float = typer.Option(24.0, help="Profondeur de la periode, en heures."),
     points: int = typer.Option(
         MAX_POINTS_PER_REQUEST,
-        help="Nombre de mesures sur toute la periode. La periode tient alors en une "
-        "seule requete.",
+        help="Nombre de mesures sur toute la periode. La periode tient alors en une seule requete.",
     ),
     resolution: Optional[float] = typer.Option(
         None,

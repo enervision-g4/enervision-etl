@@ -106,9 +106,13 @@ class ResilientHttpClient:
         self._last_request_at: Optional[float] = None
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
-        self._session = session if session is not None else build_http_session(
-            total_retries=total_retries,
-            backoff_factor=backoff_factor,
+        self._session = (
+            session
+            if session is not None
+            else build_http_session(
+                total_retries=total_retries,
+                backoff_factor=backoff_factor,
+            )
         )
 
     def get_json(

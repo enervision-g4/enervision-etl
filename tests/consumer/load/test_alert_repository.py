@@ -43,9 +43,7 @@ def test_the_technical_identifier_is_left_to_the_database(connection: Any) -> No
     # L'identifiant de l'API source vit dans sa propre colonne.
     insert_if_new(connection, build_alert())
 
-    assert "alert_id" not in connection.opened_cursor.statements[0].replace(
-        "source_alert_id", ""
-    )
+    assert "alert_id" not in connection.opened_cursor.statements[0].replace("source_alert_id", "")
 
 
 def test_a_redelivered_alert_is_absorbed(connection: Any) -> None:

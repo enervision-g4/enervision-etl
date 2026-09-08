@@ -72,8 +72,9 @@ def stub_api(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     ) -> list[EnergyReading]:
         return [
             fetch_current_reading(self, site_id or "SITE001").model_copy(
-                update={"timestamp": datetime(2026, 9, 2, 10, 0, tzinfo=UTC)
-                        + timedelta(minutes=index)}
+                update={
+                    "timestamp": datetime(2026, 9, 2, 10, 0, tzinfo=UTC) + timedelta(minutes=index)
+                }
             )
             for index in range(3)
         ]
@@ -127,8 +128,7 @@ def test_collect_realtime_publishes_the_active_alerts(stub_api: None) -> None:
 
     assert result.exit_code == 0
     published_alerts = [
-        line for line in published_lines(result.stdout)
-        if line["topic"] == "enervision.alert"
+        line for line in published_lines(result.stdout) if line["topic"] == "enervision.alert"
     ]
     assert len(published_alerts) == 1
     payload = published_alerts[0]["value"]["payload"]
@@ -139,18 +139,14 @@ def test_collect_realtime_publishes_the_active_alerts(stub_api: None) -> None:
 def test_backfill_publishes_no_alert(stub_api: None) -> None:
     # Le rattrapage ne porte que des mesures : l'API n'expose pas d'historique
     # d'alertes, il n'y a donc rien a rejouer sur ce topic.
-    result = runner.invoke(
-        application, ["backfill", "--site", "SITE002", "--hours", "1"]
-    )
+    result = runner.invoke(application, ["backfill", "--site", "SITE002", "--hours", "1"])
 
     topics = [line["topic"] for line in published_lines(result.stdout)]
     assert "enervision.alert" not in topics
 
 
 def test_backfill_publishes_the_requested_window(stub_api: None) -> None:
-    result = runner.invoke(
-        application, ["backfill", "--site", "SITE002", "--hours", "1"]
-    )
+    result = runner.invoke(application, ["backfill", "--site", "SITE002", "--hours", "1"])
 
     assert result.exit_code == 0
     published = published_lines(result.stdout)

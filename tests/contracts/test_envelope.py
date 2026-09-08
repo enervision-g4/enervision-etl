@@ -113,9 +113,7 @@ def test_the_payload_holds_only_the_columns_of_the_data_model(
 def test_a_naive_timestamp_is_refused(utc_reading: EnergyReading) -> None:
     # Publier un horodatage sans fuseau laisserait le consumer deviner. La normalisation
     # vers UTC doit avoir eu lieu avant la publication.
-    naive_reading = utc_reading.model_copy(
-        update={"timestamp": MEASURED_AT.replace(tzinfo=None)}
-    )
+    naive_reading = utc_reading.model_copy(update={"timestamp": MEASURED_AT.replace(tzinfo=None)})
 
     with pytest.raises(ValidationError):
         envelope_for_raw_reading(naive_reading, CollectionMode.REALTIME)
@@ -194,9 +192,7 @@ def test_a_site_envelope_carries_the_registry(
 def test_an_envelope_survives_a_full_round_trip(utc_reading: EnergyReading) -> None:
     envelope = envelope_for_raw_reading(utc_reading, CollectionMode.REALTIME)
 
-    restored = MessageEnvelope[MeasureRawPayload].model_validate_json(
-        envelope.model_dump_json()
-    )
+    restored = MessageEnvelope[MeasureRawPayload].model_validate_json(envelope.model_dump_json())
 
     assert restored == envelope
 
@@ -308,9 +304,7 @@ def test_an_alert_is_partitioned_by_site(utc_alert: Alert) -> None:
 
 
 def test_a_naive_alert_timestamp_is_refused(utc_alert: Alert) -> None:
-    naive_alert = utc_alert.model_copy(
-        update={"timestamp": ALERT_RAISED_AT.replace(tzinfo=None)}
-    )
+    naive_alert = utc_alert.model_copy(update={"timestamp": ALERT_RAISED_AT.replace(tzinfo=None)})
 
     with pytest.raises(ValidationError):
         envelope_for_alert(naive_alert, CollectionMode.REALTIME)
@@ -331,9 +325,7 @@ def test_an_alert_without_measured_value_keeps_its_nulls(utc_alert: Alert) -> No
 def test_an_alert_envelope_survives_a_full_round_trip(utc_alert: Alert) -> None:
     envelope = envelope_for_alert(utc_alert, CollectionMode.REALTIME)
 
-    restored = MessageEnvelope[AlertPayload].model_validate_json(
-        envelope.model_dump_json()
-    )
+    restored = MessageEnvelope[AlertPayload].model_validate_json(envelope.model_dump_json())
 
     assert restored.payload.source_alert_id == "ALR-SITE002-1718458320"
     assert restored.payload.value_kw == 812.5
