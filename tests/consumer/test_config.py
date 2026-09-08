@@ -89,6 +89,19 @@ def test_an_unknown_url_scheme_is_refused(
         build_persistence(database_url="mysql://u:p@h:3306/d", kafka_bootstrap_servers=VALID_BROKER)
 
 
+def test_a_sqlalchemy_style_driver_suffix_is_stripped(
+    isolated_environment: pytest.MonkeyPatch,
+) -> None:
+    # D'autres services du parc utilisent SQLAlchemy et ecrivent parfois ce schema
+    # dans le DATABASE_URL partage entre tous les services : psycopg ne le comprend pas.
+    settings = build_persistence(
+        database_url="postgresql+psycopg://g4_app:secret@g4_db:5432/g4_db",
+        kafka_bootstrap_servers=VALID_BROKER,
+    )
+
+    assert settings.database_url == "postgresql://g4_app:secret@g4_db:5432/g4_db"
+
+
 def test_windows_line_endings_do_not_corrupt_values(
     isolated_environment: pytest.MonkeyPatch,
 ) -> None:
