@@ -18,6 +18,7 @@ import calendar
 import itertools
 import sys
 from datetime import UTC, datetime
+from itertools import pairwise
 
 from enervision_etl.config import load_settings
 from enervision_etl.extract.errors import MockApiError
@@ -49,7 +50,9 @@ def months_before(reference: datetime, months: int) -> datetime:
 
 
 def monthly_windows(total_months: int, end_time: datetime) -> list[tuple[datetime, datetime]]:
-    """Decoupe une profondeur en mois calendaires en fenetres jointives (plus ancien en premier).
+    """Decoupe une profondeur en mois calendaires en fenetres jointives.
+
+    Plus ancien en premier.
 
     Args:
         total_months: Nombre de mois a couvrir, en remontant depuis end_time.
@@ -59,7 +62,7 @@ def monthly_windows(total_months: int, end_time: datetime) -> list[tuple[datetim
         Les fenetres (debut inclus, fin exclue), de la plus ancienne a la plus recente.
     """
     boundaries = [months_before(end_time, k) for k in range(total_months, -1, -1)]
-    return list(itertools.pairwise(boundaries))
+    return list(pairwise(boundaries))
 
 
 def main() -> int:
@@ -113,12 +116,22 @@ def main() -> int:
             windows_per_site=len(windows),
             resolution_s=args.resolution,
         )
+        print(
+            f"Demarrage : {len(sites)} sites x {len(windows)} fenetres "
+            f"= {len(sites) * len(windows)} appels. Ctrl+C interrompt proprement "
+            "a tout moment (les fenetres deja publiees restent acquises).",
+            flush=True,
+        )
 
         failures: list[str] = []
         total_published = 0
+        total_windows = len(sites) * len(windows)
+        completed_windows = 0
         try:
             for site in sites:
                 for window_start, window_end in windows:
+                    completed_windows += 1
+                    progress_percent = 100 * completed_windows / total_windows
                     try:
                         report = rattrapage.run(site, window_start, window_end, args.resolution)
                     except MockApiError as failure:
@@ -130,6 +143,12 @@ def main() -> int:
                             cause=str(failure),
                         )
                         failures.append(f"{site} {window_start.date()}..{window_end.date()}")
+                        print(
+                            f"[{completed_windows}/{total_windows} {progress_percent:5.1f}%] "
+                            f"{site} {window_start.date()}..{window_end.date()} : "
+                            f"ECHEC ({failure})",
+                            flush=True,
+                        )
                         continue
                     total_published += report.published_measures
                     logger.info(
@@ -140,6 +159,15 @@ def main() -> int:
                         published=report.published_measures,
                         null_ratio=round(report.null_ratio, 3),
                         refused_as_degenerate=report.refused_as_degenerate,
+                    )
+                    # Retour lisible directement dans le terminal, en plus du log JSON
+                    # structure ci-dessus : utile pour suivre une execution interactive.
+                    print(
+                        f"[{completed_windows}/{total_windows} {progress_percent:5.1f}%] "
+                        f"{site} {window_start.date()}..{window_end.date()} : "
+                        f"{report.published_measures} mesures "
+                        f"(null {report.null_ratio:.1%}, total publie {total_published})",
+                        flush=True,
                     )
                     # Une fenetre publie ~90k messages (brut + impute) : sans ce flush,
                     # la file interne du producer (queue.buffering.max.messages, 100k
@@ -160,4 +188,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        # Les fenetres deja publiees avant l'interruption restent acquises (le
+        # flush par fenetre les a deja livrees) : relancer plus tard reprend
+        # simplement les fenetres manquantes, sans dupliquer (ON CONFLICT DO
+        # NOTHING cote base sur (site_id, timestamp)).
+        print("\nInterrompu (Ctrl+C) : les fenetres deja publiees restent en base.")
+        sys.exit(130)
