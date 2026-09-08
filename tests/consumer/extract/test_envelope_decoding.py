@@ -122,8 +122,10 @@ def test_an_unreadable_message_is_rejected_with_its_topic() -> None:
 def test_a_payload_violating_the_contract_is_rejected() -> None:
     # site_id est la cle de partition et la cle etrangere : sans lui, le message est
     # ininsérable, mieux vaut le signaler que de deviner.
-    ampute = b'{"schema_version":"1.0.0","event_type":"measure_raw",' \
-             b'"produced_at":"2024-06-15T14:32:00Z","payload":{"data_quality":"good"}}'
+    ampute = (
+        b'{"schema_version":"1.0.0","event_type":"measure_raw",'
+        b'"produced_at":"2024-06-15T14:32:00Z","payload":{"data_quality":"good"}}'
+    )
 
     with pytest.raises(EnvelopeDecodingError):
         decode_envelope(RAW_TOPIC, ampute, RAW_ENVELOPE)

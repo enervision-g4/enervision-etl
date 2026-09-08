@@ -84,9 +84,7 @@ class SiteRegistryPublisher:
         Returns:
             Les identifiants diffuses, dans l'ordre de la liste.
         """
-        current_payloads = {
-            site.site_id: envelope_for_site(site).payload for site in site_registry
-        }
+        current_payloads = {site.site_id: envelope_for_site(site).payload for site in site_registry}
 
         published_site_ids: list[str] = []
         for site in site_registry:

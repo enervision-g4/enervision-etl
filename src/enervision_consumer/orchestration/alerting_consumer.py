@@ -105,15 +105,11 @@ class AlertingConsumer:
         )
 
     def _apply_site(self, message: ConsumedMessage, report: AlertingReport) -> None:
-        envelope = decode_envelope(
-            message.topic(), message.value(), MessageEnvelope[SitePayload]
-        )
+        envelope = decode_envelope(message.topic(), message.value(), MessageEnvelope[SitePayload])
         upsert_site(self._connection, envelope.payload)
         report.sites_written += 1
 
     def _apply_alert(self, message: ConsumedMessage, report: AlertingReport) -> None:
-        envelope = decode_envelope(
-            message.topic(), message.value(), MessageEnvelope[AlertPayload]
-        )
+        envelope = decode_envelope(message.topic(), message.value(), MessageEnvelope[AlertPayload])
         alert_repository.insert_if_new(self._connection, envelope.payload)
         report.alerts_written += 1

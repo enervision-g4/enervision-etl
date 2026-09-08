@@ -13,6 +13,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 ACCEPTED_URL_SCHEMES = ("http://", "https://")
 """Schemas acceptes pour l'URL de l'API mock."""
 
+
 class PublisherTarget(StrEnum):
     """Destination des messages produits par le collecteur."""
 
@@ -159,9 +160,7 @@ class EtlSettings(BaseSettings):
                 f"SITES must be a comma separated string, received {type(configured_sites)}"
             )
         return [
-            identifier.strip()
-            for identifier in configured_sites.split(",")
-            if identifier.strip()
+            identifier.strip() for identifier in configured_sites.split(",") if identifier.strip()
         ]
 
     @field_validator("sites")
@@ -193,9 +192,7 @@ class EtlSettings(BaseSettings):
             ValueError: Si publisher_target vaut kafka sans broker renseigne.
         """
         if self.publisher_target is PublisherTarget.KAFKA and not self.kafka_bootstrap_servers:
-            raise ValueError(
-                "KAFKA_BOOTSTRAP_SERVERS is required when PUBLISHER_TARGET is kafka"
-            )
+            raise ValueError("KAFKA_BOOTSTRAP_SERVERS is required when PUBLISHER_TARGET is kafka")
         return self
 
     @property

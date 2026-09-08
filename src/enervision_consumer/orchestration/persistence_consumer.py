@@ -121,9 +121,7 @@ class PersistenceConsumer:
         )
 
     def _apply_site(self, message: ConsumedMessage, report: ConsumptionReport) -> None:
-        envelope = decode_envelope(
-            message.topic(), message.value(), MessageEnvelope[SitePayload]
-        )
+        envelope = decode_envelope(message.topic(), message.value(), MessageEnvelope[SitePayload])
         upsert_site(self._connection, envelope.payload)
         report.sites_written += 1
 

@@ -38,9 +38,7 @@ def build_envelope(payload: dict[str, Any], site_id: str = "SITE001"):
 
 
 def published_lines(captured_output: io.StringIO) -> list[dict[str, Any]]:
-    return [
-        json.loads(line) for line in captured_output.getvalue().splitlines() if line.strip()
-    ]
+    return [json.loads(line) for line in captured_output.getvalue().splitlines() if line.strip()]
 
 
 def test_it_satisfies_the_publisher_protocol(publisher: StdoutPublisher) -> None:

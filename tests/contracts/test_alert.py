@@ -28,9 +28,7 @@ def test_the_native_identifier_stays_a_string(
 def test_an_alert_without_measured_value_is_accepted(
     active_alerts_payload: list[dict[str, Any]],
 ) -> None:
-    alert = Alert.model_validate(
-        active_alerts_payload[0] | {"value": None, "threshold": None}
-    )
+    alert = Alert.model_validate(active_alerts_payload[0] | {"value": None, "threshold": None})
 
     assert alert.value is None
     assert alert.threshold is None

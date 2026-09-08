@@ -118,9 +118,7 @@ class KafkaPublisher:
 
         from confluent_kafka import Producer
 
-        return cast(
-            ProducerLike, Producer(build_producer_configuration(bootstrap_servers))
-        )
+        return cast(ProducerLike, Producer(build_producer_configuration(bootstrap_servers)))
 
     @property
     def delivered_counts(self) -> dict[str, int]:

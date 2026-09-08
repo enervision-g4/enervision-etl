@@ -25,9 +25,7 @@ application = typer.Typer(
 )
 logger = get_logger("cli")
 
-MESSAGES_OPTION = typer.Option(
-    None, help="Nombre de messages a traiter. Sans limite par defaut."
-)
+MESSAGES_OPTION = typer.Option(None, help="Nombre de messages a traiter. Sans limite par defaut.")
 
 
 def _open_service_consumer(settings: ConsumerSettings) -> ConsumerLike:

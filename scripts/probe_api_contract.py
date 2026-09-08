@@ -3,6 +3,7 @@
 A lancer avant de developper contre une nouvelle instance : les ecarts entre le
 contrat suppose et l'instance deployee sont la premiere cause de bug silencieux.
 """
+
 import sys
 from datetime import datetime, timedelta
 from itertools import pairwise
@@ -58,8 +59,7 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
     exposed_site_ids = {site.site_id for site in sites}
     for site in sites:
         print(
-            f"  {site.site_id}  {site.site_type:<14} "
-            f"{site.capacity_kw:>7.0f} kW  {site.site_name}"
+            f"  {site.site_id}  {site.site_type:<14} {site.capacity_kw:>7.0f} kW  {site.site_name}"
         )
     try:
         collected_sites = resolve_site_identifiers(settings.sites, sites)
@@ -69,16 +69,20 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
     if not collected_sites:
         print("\n  La configuration SITES ne peut pas etre resolue, voir le verdict.")
     elif settings.collects_every_site:
-        print(f"\n  SITES n'impose aucune restriction : les {len(exposed_site_ids)} sites "
-              "exposes seront collectes.")
+        print(
+            f"\n  SITES n'impose aucune restriction : les {len(exposed_site_ids)} sites "
+            "exposes seront collectes."
+        )
     else:
-        print(f"\n  SITES restreint la collecte a {len(collected_sites)} des "
-              f"{len(exposed_site_ids)} sites exposes : {collected_sites}")
+        print(
+            f"\n  SITES restreint la collecte a {len(collected_sites)} des "
+            f"{len(exposed_site_ids)} sites exposes : {collected_sites}"
+        )
 
     section_title("3. Conformite du contrat EnergyReading sur /current")
     qualities: dict[str, int] = {}
     causes: dict[str, int] = {}
-    for site_id in (collected_sites or sorted(exposed_site_ids)):
+    for site_id in collected_sites or sorted(exposed_site_ids):
         raw_text = http.get_json(f"/api/v1/sites/{site_id}/current", site_id=site_id)
 
         inconnus = set(raw_text) - DOCUMENTED_FIELDS
@@ -95,9 +99,7 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
         try:
             lecture = EnergyReading.model_validate(raw_text)
         except ValidationError as failure:
-            anomalies.append(
-                f"{site_id} : la reponse ne valide pas le contrat : {failure}"
-            )
+            anomalies.append(f"{site_id} : la reponse ne valide pas le contrat : {failure}")
             continue
 
         qualities[lecture.data_quality] = qualities.get(lecture.data_quality, 0) + 1
@@ -107,8 +109,10 @@ with ResilientHttpClient(settings.api_mock_base_url, settings.api_mock_timeout_s
             anomalies.append(f"{site_id} : data_quality inconnu '{lecture.data_quality}'")
 
         missing = lecture.missing_measurement_fields()
-        print(f"  {site_id}  quality={lecture.data_quality:<9} muets={len(missing)}/7  "
-              f"consumption_kw={lecture.consumption_kw}")
+        print(
+            f"  {site_id}  quality={lecture.data_quality:<9} muets={len(missing)}/7  "
+            f"consumption_kw={lecture.consumption_kw}"
+        )
 
     print(f"\n  Repartition data_quality : {qualities}")
     print(f"  Valeurs attendues        : {sorted(KNOWN_DATA_QUALITY_LEVELS)}")

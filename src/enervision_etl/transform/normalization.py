@@ -37,9 +37,7 @@ def to_utc(timestamp: datetime, source_timezone: str) -> datetime:
     try:
         declared_timezone = ZoneInfo(source_timezone)
     except (ZoneInfoNotFoundError, ValueError) as unknown_timezone:
-        raise ValueError(
-            f"Unknown source timezone {source_timezone!r}"
-        ) from unknown_timezone
+        raise ValueError(f"Unknown source timezone {source_timezone!r}") from unknown_timezone
 
     return timestamp.replace(tzinfo=declared_timezone).astimezone(UTC)
 
@@ -87,9 +85,7 @@ def normalize_reading(reading: EnergyReading, source_timezone: str) -> EnergyRea
     Raises:
         ValueError: Si source_timezone n'est pas un fuseau IANA connu.
     """
-    return reading.model_copy(
-        update={"timestamp": to_utc(reading.timestamp, source_timezone)}
-    )
+    return reading.model_copy(update={"timestamp": to_utc(reading.timestamp, source_timezone)})
 
 
 def normalize_alert(alert: Alert, source_timezone: str) -> Alert:
@@ -107,6 +103,4 @@ def normalize_alert(alert: Alert, source_timezone: str) -> Alert:
     Raises:
         ValueError: Si source_timezone n'est pas un fuseau IANA connu.
     """
-    return alert.model_copy(
-        update={"timestamp": to_utc(alert.timestamp, source_timezone)}
-    )
+    return alert.model_copy(update={"timestamp": to_utc(alert.timestamp, source_timezone)})
