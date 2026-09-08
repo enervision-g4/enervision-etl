@@ -6,11 +6,18 @@ declare que les topics dont il a la charge : un conteneur d'alerting n'a pas a c
 les topics de mesures.
 """
 
+import re
+
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ACCEPTED_DATABASE_SCHEMES = ("postgres://", "postgresql://")
 """Schemas acceptes pour l'URL de la base. libpq reconnait les deux."""
+
+SQLALCHEMY_DRIVER_SUFFIX = re.compile(r"^(postgres|postgresql)\+\w+://")
+"""SQLAlchemy ecrit parfois postgresql+psycopg:// dans le DATABASE_URL partage entre
+tous les services du parc. Ce schema n'a de sens que pour SQLAlchemy ; psycopg, utilise
+ici directement, attend postgres:// ou postgresql:// nu (voir load/postgres_connection.py)."""
 
 REGISTRY_GROUP_SUFFIX = "-registry"
 """Suffixe du groupe dedie au redrainage du referentiel."""
@@ -64,6 +71,22 @@ class ConsumerSettings(BaseSettings):
             name: value.strip() if isinstance(value, str) else value
             for name, value in submitted_values.items()
         }
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def strip_the_sqlalchemy_driver_suffix(cls, configured_url: object) -> object:
+        """Retire un suffixe de pilote SQLAlchemy (dialect+driver://) du schema.
+
+        Args:
+            configured_url: Valeur brute lue dans l'environnement.
+
+        Returns:
+            L'URL avec le suffixe de pilote retire ; inchangee si absente ou si la
+            valeur n'est pas une chaine.
+        """
+        if isinstance(configured_url, str):
+            return SQLALCHEMY_DRIVER_SUFFIX.sub(r"\1://", configured_url)
+        return configured_url
 
     @field_validator("database_url")
     @classmethod
