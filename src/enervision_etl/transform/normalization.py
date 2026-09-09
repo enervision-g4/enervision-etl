@@ -1,15 +1,14 @@
-"""Normalisation des mesures avant publication.
+"""Normalisation avant publication : mise a l'heure UTC et taux de charge.
 
-Regroupe les conversions qui rendent une mesure comparable et exploitable en aval :
-mise a l'heure UTC et calcul du taux de charge rapporte a la capacite du site.
-Toutes les fonctions sont pures et sans effet de bord.
+Fonctions pures, sans effet de bord.
 """
 
 from datetime import UTC, datetime
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..contracts.energy_reading import EnergyReading
+from enervision_contracts.alert import Alert
+from enervision_contracts.energy_reading import EnergyReading
 
 LOAD_PERCENT_DECIMALS = 2
 """Nombre de decimales conservees pour le taux de charge."""
@@ -18,9 +17,8 @@ LOAD_PERCENT_DECIMALS = 2
 def to_utc(timestamp: datetime, source_timezone: str) -> datetime:
     """Ramene un horodatage a UTC en explicitant son fuseau d'origine.
 
-    Un horodatage deja situe est simplement converti, son decalage faisant foi. Un
-    horodatage naif est d'abord rattache au fuseau declare en configuration : cette
-    convention est externe a la donnee et ne doit jamais etre devinee.
+    Un horodatage situe est converti, son decalage faisant foi. Un horodatage naif est
+    rattache au fuseau declare en configuration, convention externe a la donnee.
 
     Args:
         timestamp: Horodatage a convertir, naif ou situe.
@@ -39,9 +37,7 @@ def to_utc(timestamp: datetime, source_timezone: str) -> datetime:
     try:
         declared_timezone = ZoneInfo(source_timezone)
     except (ZoneInfoNotFoundError, ValueError) as unknown_timezone:
-        raise ValueError(
-            f"Unknown source timezone {source_timezone!r}"
-        ) from unknown_timezone
+        raise ValueError(f"Unknown source timezone {source_timezone!r}") from unknown_timezone
 
     return timestamp.replace(tzinfo=declared_timezone).astimezone(UTC)
 
@@ -50,18 +46,18 @@ def compute_load_percent(
     consumption_kw: Optional[float],
     capacity_kw: float,
 ) -> Optional[float]:
-    """Calcule le taux de charge d'un site en pourcentage de sa capacite installee.
+    """Calcule le taux de charge en pourcentage de la capacite installee.
 
     Une valeur superieure a cent n'est pas plafonnee : la surcharge est un evenement
-    metier reel, c'est meme celui qui declenche les alertes de type outage.
+    metier reel.
 
     Args:
-        consumption_kw: Puissance instantanee mesuree, ou None si le compteur est muet.
-        capacity_kw: Puissance maximale installee du site, strictement positive.
+        consumption_kw: Puissance mesuree, ou None si le compteur est muet.
+        capacity_kw: Puissance maximale installee, strictement positive.
 
     Returns:
-        Le taux de charge arrondi, ou None si la mesure est absente. Une mesure
-        absente ne vaut pas zero pour cent : elle reste absente.
+        Le taux arrondi, ou None si la mesure est absente. Une mesure absente ne vaut
+        pas zero pour cent.
 
     Raises:
         ValueError: Si capacity_kw est nul ou negatif.
@@ -77,9 +73,7 @@ def compute_load_percent(
 def normalize_reading(reading: EnergyReading, source_timezone: str) -> EnergyReading:
     """Produit une copie du releve dont l'horodatage est exprime en UTC.
 
-    Les valeurs de mesure, les causes de nullite et le niveau de qualite sont
-    reportes a l'identique. Le releve d'origine n'est pas modifie, le contrat
-    EnergyReading etant immuable.
+    Mesures, causes de nullite et niveau de qualite sont reportes a l'identique.
 
     Args:
         reading: Releve issu de l'API mock.
@@ -91,6 +85,22 @@ def normalize_reading(reading: EnergyReading, source_timezone: str) -> EnergyRea
     Raises:
         ValueError: Si source_timezone n'est pas un fuseau IANA connu.
     """
-    return reading.model_copy(
-        update={"timestamp": to_utc(reading.timestamp, source_timezone)}
-    )
+    return reading.model_copy(update={"timestamp": to_utc(reading.timestamp, source_timezone)})
+
+
+def normalize_alert(alert: Alert, source_timezone: str) -> Alert:
+    """Produit une copie de l'alerte dont l'horodatage est exprime en UTC.
+
+    Severite, type, message et valeurs mesurees sont reportes a l'identique.
+
+    Args:
+        alert: Alerte issue de l'API mock.
+        source_timezone: Nom IANA du fuseau suppose des horodatages naifs.
+
+    Returns:
+        Une nouvelle alerte, identique a la premiere hormis son horodatage en UTC.
+
+    Raises:
+        ValueError: Si source_timezone n'est pas un fuseau IANA connu.
+    """
+    return alert.model_copy(update={"timestamp": to_utc(alert.timestamp, source_timezone)})

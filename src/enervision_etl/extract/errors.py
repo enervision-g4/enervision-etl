@@ -1,9 +1,7 @@
 """Exceptions de la couche d'extraction.
 
-Chaque code d'erreur HTTP renvoye par l'API mock designe un probleme de nature
-differente, donc une action corrective differente. Les distinguer par des types
-d'exception distincts evite de traiter un defaut de programmation comme un
-incident d'exploitation.
+Chaque code HTTP designe une action corrective differente : les distinguer evite de
+traiter un defaut de programmation comme un incident d'exploitation.
 """
 
 from typing import Optional
@@ -14,10 +12,7 @@ class MockApiError(Exception):
 
 
 class SiteNotFoundError(MockApiError):
-    """Le site demande est inconnu de l'API mock, reponse HTTP 404.
-
-    Signale que la variable de configuration SITES ne correspond plus au parc
-    reellement expose par l'API.
+    """Site inconnu de l'API, reponse HTTP 404 : la configuration SITES est perimee.
 
     Attributes:
         site_id: Identifiant du site absent.
@@ -34,10 +29,7 @@ class SiteNotFoundError(MockApiError):
 
 
 class InvalidRequestParameterError(MockApiError):
-    """La requete emise est invalide, reponse HTTP 422.
-
-    Signale un defaut de construction de la requete cote collecteur, et non un
-    incident d'exploitation. La rejouer serait donc inutile.
+    """Requete invalide, reponse HTTP 422 : defaut de code, inutile de la rejouer.
 
     Attributes:
         endpoint: Chemin de l'endpoint appele.
@@ -57,10 +49,7 @@ class InvalidRequestParameterError(MockApiError):
 
 
 class MockApiUnavailableError(MockApiError):
-    """L'API mock n'a pas repondu apres epuisement du budget de rejeu.
-
-    Couvre les erreurs serveur 5xx, les delais d'attente depasses et les echecs
-    de connexion.
+    """API injoignable apres epuisement du rejeu : 5xx, delai depasse ou connexion.
 
     Attributes:
         endpoint: Chemin de l'endpoint appele.
@@ -80,3 +69,29 @@ class MockApiUnavailableError(MockApiError):
         )
         self.endpoint = endpoint
         self.cause = cause
+
+
+class WindowTooLargeError(MockApiError):
+    """La periode demandee depasse ce que le decoupage peut couvrir.
+
+    Renvoyer une serie tronquee serait pire qu'un echec : l'aval la prendrait pour
+    l'historique complet et les mesures manquantes passeraient inapercues.
+
+    Attributes:
+        requested_hours: Duree demandee, en heures.
+        coverable_hours: Duree couvrable a la resolution demandee, en heures.
+    """
+
+    def __init__(self, requested_hours: float, coverable_hours: float) -> None:
+        """Construit l'erreur pour une periode trop longue.
+
+        Args:
+            requested_hours: Duree demandee, en heures.
+            coverable_hours: Duree couvrable a la resolution demandee, en heures.
+        """
+        super().__init__(
+            f"requested window of {requested_hours:.1f} h exceeds the {coverable_hours:.1f} h "
+            "coverable at this resolution: narrow the window or coarsen the resolution"
+        )
+        self.requested_hours = requested_hours
+        self.coverable_hours = coverable_hours

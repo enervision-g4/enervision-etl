@@ -1,0 +1,32 @@
+[
+  {
+    "alert_id": "ALR-SITE002-1718458320",
+    "timestamp": "2024-06-15T14:12:00",
+    "site_id": "SITE002",
+    "severity": "critical",
+    "type": "outage",
+    "message": "Risque de surcharge sur Usine Lyon Venissieux",
+    "value": 812.5,
+    "threshold": 720.0
+  },
+  {
+    "alert_id": "ALR-SITE001-1718458200",
+    "timestamp": "2024-06-15T14:10:00",
+    "site_id": "SITE001",
+    "severity": "medium",
+    "type": "spike",
+    "message": "Pic de consommation sur Bureau Paris La Defense",
+    "value": 178.4,
+    "threshold": 160.0
+  },
+  {
+    "alert_id": "ALR-SITE003-1718458140",
+    "timestamp": "2024-06-15T14:09:00",
+    "site_id": "SITE003",
+    "severity": "high",
+    "type": "threshold",
+    "message": "Depassement du seuil sur Data Center Marseille",
+    "value": 688.2,
+    "threshold": 640.0
+  }
+]

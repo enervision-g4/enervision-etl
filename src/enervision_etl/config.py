@@ -1,17 +1,25 @@
-"""Configuration du pipeline, lue dans l'environnement et validee au demarrage.
+"""Configuration lue dans l'environnement et validee au demarrage.
 
-Aucune adresse n'est codee en dur. Une configuration incomplete fait echouer le
-demarrage immediatement, avec un message explicite, plutot qu'au bout de
-plusieurs minutes de fonctionnement sur une valeur absente.
+Aucune adresse en dur, et une configuration incomplete fait echouer le demarrage
+immediatement plutot qu'apres plusieurs minutes de fonctionnement.
 """
 
+from enum import StrEnum
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ACCEPTED_URL_SCHEMES = ("http://", "https://")
 """Schemas acceptes pour l'URL de l'API mock."""
+
+
+class PublisherTarget(StrEnum):
+    """Destination des messages produits par le collecteur."""
+
+    STDOUT = "stdout"
+    KAFKA = "kafka"
+
 
 EVERY_SITE_WILDCARD = "ALL"
 """Valeur de SITES demandant explicitement la collecte de tout le parc."""
@@ -27,13 +35,22 @@ class EtlSettings(BaseSettings):
         api_mock_base_url: Racine de l'API mock, schema http ou https obligatoire.
         api_mock_timeout_seconds: Delai d'attente applique a chaque requete.
         api_mock_source_timezone: Fuseau suppose des horodatages naifs de l'API.
+        api_mock_min_request_interval_seconds: Espacement minimal entre deux requetes.
         poll_interval_seconds: Periode du collecteur temps reel.
+        site_refresh_interval_seconds: Delai entre deux verifications de la liste
+            des sites. Une republication n'a lieu que si un site a change.
         sites: Identifiants des sites a collecter. Une liste vide, absente ou
             reduite au mot ALL demande la collecte de tout le parc expose par l'API.
-        kafka_bootstrap_servers: Broker Kafka du conteneur messager-consumer.
-        kafka_topic_readings: Topic des mesures brutes.
-        kafka_topic_readings_imputed: Topic des mesures imputees.
-        kafka_topic_alerts: Topic des alertes.
+        kafka_bootstrap_servers: Adresse du broker. Obligatoire uniquement si
+            publisher_target vaut kafka.
+        kafka_topic_site: Topic de la liste des sites, alimentant la table SITE.
+            A creer avec une politique de compaction.
+        kafka_topic_measure_raw: Topic alimentant la table MEASURE_RAW.
+        kafka_topic_measure_imputed: Topic alimentant la table MEASURE_IMPUTED.
+        kafka_topic_alert: Topic alimentant la table ALERT.
+        publisher_target: Destination des messages, stdout ou kafka.
+        log_level: Seuil de journalisation.
+        log_as_json: Vrai pour des logs JSON, faux pour un rendu console.
         metrics_port: Port d'exposition des metriques Prometheus.
         imputation_max_gap_measures: Longueur maximale d'un trou encore imputable.
     """
@@ -48,17 +65,57 @@ class EtlSettings(BaseSettings):
     api_mock_base_url: str
     api_mock_timeout_seconds: float = Field(default=5.0, gt=0)
     api_mock_source_timezone: str = "UTC"
+    # L'instance mock se degrade en rafale et renvoie alors des series entierement
+    # nulles. Espacer les requetes protege la mesure autant que le serveur.
+    api_mock_min_request_interval_seconds: float = Field(default=0.2, ge=0)
 
     poll_interval_seconds: int = Field(default=60, gt=0)
+    site_refresh_interval_seconds: float = Field(default=3600.0, gt=0)
     sites: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
-    kafka_bootstrap_servers: str = Field(min_length=1)
-    kafka_topic_readings: str = "enervision.readings.raw"
-    kafka_topic_readings_imputed: str = "enervision.readings.imputed"
-    kafka_topic_alerts: str = "enervision.alerts"
+    # Exigee seulement si la destination est kafka : publier sur stdout ne demande
+    # aucun broker, et en reclamer un empecherait de developper sans infrastructure.
+    kafka_bootstrap_servers: str = ""
+    # Un topic par table du MCD, ce qui rend la destination de chaque message lisible
+    # sans documentation et aligne les deux depots sur un vocabulaire unique.
+    kafka_topic_site: str = "enervision.site"
+    kafka_topic_measure_raw: str = "enervision.measure_raw"
+    kafka_topic_measure_imputed: str = "enervision.measure_imputed"
+    kafka_topic_alert: str = "enervision.alert"
+
+    # stdout par defaut : rien ne doit tenter d'atteindre un broker par accident.
+    publisher_target: PublisherTarget = PublisherTarget.STDOUT
+    log_level: str = "INFO"
+    log_as_json: bool = True
 
     metrics_port: int = Field(default=8001, gt=0, le=65535)
     imputation_max_gap_measures: int = Field(default=3, gt=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_surrounding_whitespace(
+        cls,
+        submitted_values: dict[str, object],
+    ) -> dict[str, object]:
+        """Retire les espaces et retours chariot autour de chaque valeur.
+
+        Un fichier .env enregistre sous Windows termine ses lignes par un retour
+        chariot, que docker transmet tel quel dans l'environnement du conteneur. Le
+        nettoyage doit intervenir avant toute validation : une destination suivie d'un
+        retour chariot serait confrontee a l'enumeration et rejetee sans raison lisible.
+
+        Args:
+            submitted_values: Valeurs brutes issues de l'environnement.
+
+        Returns:
+            Les memes valeurs, chaines nettoyees.
+        """
+        if not isinstance(submitted_values, dict):
+            return submitted_values
+        return {
+            name: value.strip() if isinstance(value, str) else value
+            for name, value in submitted_values.items()
+        }
 
     @field_validator("api_mock_base_url")
     @classmethod
@@ -69,7 +126,7 @@ class EtlSettings(BaseSettings):
             configured_url: Valeur brute lue dans l'environnement.
 
         Returns:
-            L'URL sans barre oblique finale, evitant les doubles barres a la concatenation.
+            L'URL sans barre oblique finale.
 
         Raises:
             ValueError: Si l'URL ne commence pas par http:// ou https://.
@@ -85,14 +142,13 @@ class EtlSettings(BaseSettings):
     @field_validator("sites", mode="before")
     @classmethod
     def split_site_identifiers(cls, configured_sites: object) -> list[str]:
-        """Decoupe la liste des sites fournie sous forme de chaine separee par des virgules.
+        """Decoupe la liste des sites separee par des virgules.
 
         Args:
-            configured_sites: Valeur brute, chaine separee par des virgules ou
-                liste deja construite.
+            configured_sites: Chaine separee par des virgules, ou liste construite.
 
         Returns:
-            Les identifiants de site, debarrasses des espaces et des entrees vides.
+            Les identifiants, sans espaces ni entrees vides.
 
         Raises:
             TypeError: Si la valeur n'est ni une chaine ni une liste.
@@ -104,9 +160,7 @@ class EtlSettings(BaseSettings):
                 f"SITES must be a comma separated string, received {type(configured_sites)}"
             )
         return [
-            identifier.strip()
-            for identifier in configured_sites.split(",")
-            if identifier.strip()
+            identifier.strip() for identifier in configured_sites.split(",") if identifier.strip()
         ]
 
     @field_validator("sites")
@@ -114,11 +168,8 @@ class EtlSettings(BaseSettings):
     def normalize_wildcard(cls, site_identifiers: list[str]) -> list[str]:
         """Ramene la demande de collecte totale a une liste vide.
 
-        Enumerer les sites dans l'environnement dupliquerait une information que
-        l'API expose deja, et deviendrait ingerable sur un parc de plusieurs centaines
-        de sites. Une liste vide signifie donc tout le parc, le filtrage explicite
-        restant possible pour restreindre un environnement de developpement ou pour
-        repartir la collecte entre plusieurs instances.
+        Enumerer les sites dupliquerait ce que l'API expose deja. Une liste vide
+        signifie tout le parc, le filtrage explicite restant possible.
 
         Args:
             site_identifiers: Identifiants deja decoupes.
@@ -129,6 +180,20 @@ class EtlSettings(BaseSettings):
         if len(site_identifiers) == 1 and site_identifiers[0].upper() == EVERY_SITE_WILDCARD:
             return []
         return site_identifiers
+
+    @model_validator(mode="after")
+    def require_a_broker_only_when_publishing_to_kafka(self) -> "EtlSettings":
+        """Refuse une destination Kafka sans adresse de broker.
+
+        Returns:
+            La configuration inchangee.
+
+        Raises:
+            ValueError: Si publisher_target vaut kafka sans broker renseigne.
+        """
+        if self.publisher_target is PublisherTarget.KAFKA and not self.kafka_bootstrap_servers:
+            raise ValueError("KAFKA_BOOTSTRAP_SERVERS is required when PUBLISHER_TARGET is kafka")
+        return self
 
     @property
     def collects_every_site(self) -> bool:

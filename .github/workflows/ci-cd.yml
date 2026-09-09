@@ -1,0 +1,75 @@
+name: Build, push and deploy ETL
+
+# Ce depot porte les deux extremites de la chaine : le collecteur et les deux
+# consumers partagent la meme image, seule la commande du conteneur les distingue.
+# Une seule construction alimente donc trois deploiements.
+
+on:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      stage: ${{ steps.meta.outputs.stage }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tag and stage
+        id: meta
+        run: |
+          echo "image=ghcr.io/enervision-g4/enervision-etl:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "stage=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "stage=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+
+  # Les trois services sont independants entre eux : aucun n'attend les autres.
+  # Leurs dependances reelles, la base et le broker, se deploient separement.
+  deploy-etl:
+    needs: build-and-push
+    uses: enervision-g4/enervision-devops/.github/workflows/deploy.yml@main
+    with:
+      service: etl
+      stage: ${{ needs.build-and-push.outputs.stage }}
+      image: ${{ needs.build-and-push.outputs.image }}
+    secrets: inherit
+
+  deploy-consumer-persistence:
+    needs: build-and-push
+    uses: enervision-g4/enervision-devops/.github/workflows/deploy.yml@main
+    with:
+      service: consumer-persistence
+      stage: ${{ needs.build-and-push.outputs.stage }}
+      image: ${{ needs.build-and-push.outputs.image }}
+    secrets: inherit
+
+  deploy-consumer-alerting:
+    needs: build-and-push
+    uses: enervision-g4/enervision-devops/.github/workflows/deploy.yml@main
+    with:
+      service: consumer-alerting
+      stage: ${{ needs.build-and-push.outputs.stage }}
+      image: ${{ needs.build-and-push.outputs.image }}
+    secrets: inherit

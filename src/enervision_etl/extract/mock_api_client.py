@@ -1,28 +1,34 @@
-"""Client type de l'API mock EnerVision.
+"""Client type de l'API mock : chaque endpoint rend des objets valides, pas du JSON.
 
-Expose chaque endpoint sous forme de methode renvoyant des objets valides plutot
-que du JSON brut. Le comportement de /api/v1/readings encode ici a ete mesure sur
-une instance reelle et differe de la lecture naive de la documentation : voir
-fetch_readings_window.
+Le comportement de /api/v1/readings encode ici a ete mesure sur une instance reelle,
+voir fetch_readings_window.
 """
 
 from datetime import datetime, timedelta
 from math import ceil
 from typing import Any, Final, Optional
 
-from ..contracts.energy_reading import EnergyReading
-from ..contracts.site import Site
-from .errors import MockApiError
+from enervision_contracts.alert import Alert
+from enervision_contracts.energy_reading import EnergyReading
+from enervision_contracts.site import Site
+
+from ..logging_setup import get_logger
+from .errors import MockApiError, WindowTooLargeError
 from .http_client import ResilientHttpClient
 
-# Plafond impose par la documentation de l'endpoint /api/v1/readings.
+# Plafond de /api/v1/readings, verifie sur l'instance : au dela, l'API repond 422.
 MAX_READINGS_PER_REQUEST: Final[int] = 1000
 
 # Resolution par defaut, alignee sur la periode de polling du collecteur temps reel.
 DEFAULT_RESOLUTION_SECONDS: Final[float] = 60.0
 
-# Garde fou : borne le nombre de tranches pour une periode demesuree.
+# Borne le nombre de tranches. Une periode plus longue est refusee, jamais tronquee.
 MAX_CHUNKS_PER_WINDOW: Final[int] = 500
+
+# Au dela, la rafale de requetes suffit a mettre l'instance mock en defaut.
+CHUNKS_WORTH_WARNING_ABOUT: Final[int] = 10
+
+logger = get_logger("mock_api_client")
 
 
 class MockApiClient:
@@ -32,8 +38,7 @@ class MockApiClient:
         """Associe le client a un transport HTTP deja configure.
 
         Args:
-            http_client: Transport portant l'URL de base, le delai d'attente
-                et la politique de rejeu.
+            http_client: Transport portant l'URL de base et la politique de rejeu.
         """
         self._http_client = http_client
 
@@ -41,8 +46,7 @@ class MockApiClient:
         """Indique si l'API mock se declare operationnelle.
 
         Returns:
-            True si /health repond avec le statut healthy. Toute erreur reseau
-            ou HTTP est interpretee comme une indisponibilite, sans propagation.
+            True si /health repond healthy. Toute erreur vaut indisponibilite.
         """
         try:
             health_report = self._http_client.get_json("/health")
@@ -51,10 +55,11 @@ class MockApiClient:
         return bool(health_report.get("status") == "healthy")
 
     def fetch_site_registry(self) -> list[Site]:
-        """Recupere le referentiel complet des sites.
+        """Recupere la liste complete du parc.
 
         Returns:
-            Les sites exposes par l'API, avec leur capacite et leur type.
+            Tous les sites exposes, avec type, puissance installee et statut. Alimente
+            SITE, le taux de charge et le choix de la strategie d'imputation.
 
         Raises:
             MockApiUnavailableError: Si l'API reste injoignable.
@@ -81,10 +86,9 @@ class MockApiClient:
         return Site.model_validate(site_payload)
 
     def fetch_current_reading(self, site_id: str) -> EnergyReading:
-        """Recupere la mesure instantanee d'un site.
+        """Recupere la mesure instantanee d'un site, endpoint du collecteur temps reel.
 
-        Endpoint principal du collecteur temps reel. Une mesure partielle ou
-        integralement nulle est un resultat valide, renvoye tel quel.
+        Une mesure partielle ou integralement nulle est un resultat valide.
 
         Args:
             site_id: Identifiant metier du site.
@@ -101,6 +105,21 @@ class MockApiClient:
         )
         return EnergyReading.model_validate(reading_payload)
 
+    def fetch_active_alerts(self) -> list[Alert]:
+        """Recupere les alertes actives de tout le parc.
+
+        L'endpoint n'est pas decoupe par site : un cycle de collecte ne lui coute
+        qu'une requete, quelle que soit la taille du parc.
+
+        Returns:
+            Les alertes actives, liste vide si aucune n'est en cours.
+
+        Raises:
+            MockApiUnavailableError: Si l'API reste injoignable.
+        """
+        alert_payloads = self._http_client.get_json("/api/v1/alerts")
+        return [Alert.model_validate(payload) for payload in alert_payloads]
+
     def fetch_readings_window(
         self,
         site_id: Optional[str],
@@ -108,13 +127,12 @@ class MockApiClient:
         end_time: datetime,
         resolution_seconds: float = DEFAULT_RESOLUTION_SECONDS,
     ) -> list[EnergyReading]:
-        """Recupere l'historique simule d'un site sur une periode, a une resolution donnee.
+        """Recupere l'historique simule d'un site, a la resolution demandee.
 
-        Le parametre limit de l'API n'est pas une taille de page : il fixe le nombre de
-        points repartis uniformement dans la fenetre, l'intervalle valant
-        (end_time - start_time) / limit. L'API regenerant par ailleurs la serie a chaque
-        appel, une pagination par curseur est impossible. La periode est donc decoupee en
-        tranches jointives de duree fixe, chacune echantillonnee a la resolution voulue.
+        Le parametre limit n'est pas une taille de page mais un nombre de points
+        repartis dans la fenetre, et l'API regenere la serie a chaque appel : la
+        pagination par curseur est donc impossible. La periode est decoupee en tranches
+        jointives, chacune echantillonnee a la resolution voulue.
 
         Args:
             site_id: Identifiant du site, ou None pour interroger tout le parc.
@@ -129,6 +147,7 @@ class MockApiClient:
         Raises:
             ValueError: Si resolution_seconds n'est pas strictement positif, ou si
                 start_time est posterieur a end_time.
+            WindowTooLargeError: Si la periode depasse ce que le decoupage couvre.
             SiteNotFoundError: Si le site est inconnu de l'API.
         """
         if resolution_seconds <= 0:
@@ -145,9 +164,29 @@ class MockApiClient:
         already_collected_timestamps: set[datetime] = set()
         chunk_start_time = start_time
 
-        for _ in range(MAX_CHUNKS_PER_WINDOW):
-            if chunk_start_time >= end_time:
-                break
+        expected_chunks = ceil(
+            (end_time - start_time).total_seconds() / chunk_duration.total_seconds()
+        )
+        if expected_chunks >= CHUNKS_WORTH_WARNING_ABOUT:
+            logger.warning(
+                "demanding_window",
+                site=site_id,
+                requests=expected_chunks,
+                advice="a burst of requests degrades the mock instance, which then "
+                "returns fully null series: narrow the period or raise "
+                "API_MOCK_MIN_REQUEST_INTERVAL_SECONDS",
+            )
+
+        fetched_chunks = 0
+        while chunk_start_time < end_time:
+            if fetched_chunks >= MAX_CHUNKS_PER_WINDOW:
+                # Rendre un historique tronque serait pire qu'un echec : l'aval le
+                # prendrait pour complet et les mesures manquantes passeraient inapercues.
+                raise WindowTooLargeError(
+                    requested_hours=(end_time - start_time).total_seconds() / 3600,
+                    coverable_hours=(chunk_duration.total_seconds() * MAX_CHUNKS_PER_WINDOW / 3600),
+                )
+
             chunk_end_time = min(chunk_start_time + chunk_duration, end_time)
             requested_points = self._points_for_chunk(
                 chunk_start_time, chunk_end_time, resolution_seconds
@@ -163,6 +202,7 @@ class MockApiClient:
                 collected_readings.append(reading)
 
             chunk_start_time = chunk_end_time
+            fetched_chunks += 1
 
         collected_readings.sort(key=lambda reading: reading.timestamp)
         return collected_readings
@@ -181,7 +221,7 @@ class MockApiClient:
             resolution_seconds: Ecart souhaite entre deux mesures.
 
         Returns:
-            Le nombre de points, borne entre un et le plafond documente de l'API.
+            Le nombre de points, borne entre un et le plafond de l'API.
         """
         chunk_seconds = (chunk_end_time - chunk_start_time).total_seconds()
         requested_points = ceil(chunk_seconds / resolution_seconds)
